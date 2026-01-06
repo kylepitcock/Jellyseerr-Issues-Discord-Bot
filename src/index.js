@@ -124,6 +124,20 @@ function getKeywordHint(mediaType, reason) {
   return `Keyword ideas (${mediaKey.toUpperCase()} ${reason.toUpperCase()}): ${keywords}`;
 }
 
+function getKeywordsArray(mediaType, reason) {
+  const mediaKey = mediaType === 'tv' ? 'tv' : 'movie';
+  const keywordsStr = KEYWORDS[mediaKey]?.[reason];
+  if (!keywordsStr) return [];
+  return keywordsStr.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function descriptionHasRequiredKeyword(description, mediaType, reason) {
+  const list = getKeywordsArray(mediaType, reason);
+  if (!list.length) return true; // if no configured keywords, don't block
+  const d = (description || '').toLowerCase();
+  return list.some((k) => d.includes(k.toLowerCase()));
+}
+
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== 'issue') return;
@@ -142,6 +156,16 @@ client.on('interactionCreate', async (interaction) => {
   const keywordHint = getKeywordHint(mediaType, reason);
   if (keywordHint) {
     await interaction.followUp({ content: keywordHint, flags: MessageFlags.Ephemeral });
+  }
+
+  // Enforce keyword presence in description
+  const hasTag = descriptionHasRequiredKeyword(issueDescription, mediaType, reason);
+  if (!hasTag) {
+    const available = getKeywordsArray(mediaType, reason).join(', ');
+    await interaction.editReply(
+      `Issue not sent: your description must include at least one of these tags for ${mediaType.toUpperCase()} ${reason.toUpperCase()}: ${available}`,
+    );
+    return;
   }
 
   if (mediaType === 'tv' && (!seasonNumber || !episodeNumber)) {
