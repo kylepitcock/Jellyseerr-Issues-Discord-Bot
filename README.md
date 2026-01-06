@@ -58,8 +58,8 @@ docker run \
 ```yaml
 services:
   jellyseerr-issue-bot:
-    # Use the prebuilt image from GHCR
-    image: ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
+    # Use the prebuilt image from GHCR (pinned to known-good build)
+    image: ghcr.io/kylepitcock/jellyseerr-issue-bot:ff69d0539c86095801b867a2a42772e520483231
     environment:
       DISCORD_TOKEN: your-token
       DISCORD_APP_ID: your-app-id
