@@ -36,26 +36,22 @@ docker run \
   jellyseerr-issue-bot
 ```
 
-## Docker Compose
-1) Create `.env` with your values (or reuse the one from the Configuration section):
-```
-DISCORD_TOKEN=...
-DISCORD_APP_ID=...
-DISCORD_GUILD_ID=...
-JELLYSEERR_API_URL=...
-JELLYSEERR_API_KEY=...
-```
-
-2) Create `docker-compose.yml`:
+## Docker Compose (no .env file)
+1) Create `docker-compose.yml` with environment values inline:
 ```yaml
 services:
   jellyseerr-issue-bot:
     build: .
-    env_file: .env
+    environment:
+      DISCORD_TOKEN: your-token
+      DISCORD_APP_ID: your-app-id
+      DISCORD_GUILD_ID: optional-guild-id
+      JELLYSEERR_API_URL: https://jellyseerr.example.com
+      JELLYSEERR_API_KEY: your-api-key
     restart: unless-stopped
 ```
 
-3) Start and view logs:
+2) Start and view logs:
 ```sh
 docker compose up -d
 docker compose logs -f
