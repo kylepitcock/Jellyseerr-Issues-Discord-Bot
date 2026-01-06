@@ -36,12 +36,30 @@ docker run \
   jellyseerr-issue-bot
 ```
 
+## Prebuilt Images
+Once CI publishes, you can pull the image without cloning:
+
+- GHCR: `ghcr.io/kylepitcock/jellyseerr-issue-bot:latest`
+- Docker Hub (optional if configured): `docker.io/<your-dockerhub-user>/jellyseerr-issue-bot:latest`
+
+Run directly:
+```sh
+docker run \
+  -e DISCORD_TOKEN=... \
+  -e DISCORD_APP_ID=... \
+  -e DISCORD_GUILD_ID=... \
+  -e JELLYSEERR_API_URL=... \
+  -e JELLYSEERR_API_KEY=... \
+  ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
+```
+
 ## Docker Compose (no .env file)
 1) Create `docker-compose.yml` with environment values inline:
 ```yaml
 services:
   jellyseerr-issue-bot:
-    build: .
+    # Use the prebuilt image from GHCR
+    image: ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
     environment:
       DISCORD_TOKEN: your-token
       DISCORD_APP_ID: your-app-id
@@ -68,3 +86,11 @@ The bot posts to Jellyseerr at `POST /api/v1/issues` with payload `{ issueType: 
 - For faster testing, set `DISCORD_GUILD_ID` so commands are registered per-guild instead of globally.
 - The bot replies ephemerally to the user to avoid channel noise.
 - Logs are printed to stdout; pair with your container logging solution if you need persistence.
+
+### CI: Publishing to Registries
+This repo includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml` that:
+- Builds multi-arch (amd64 + arm64) images from the Dockerfile
+- Publishes to GHCR at `ghcr.io/<owner>/jellyseerr-issue-bot`
+- Optionally publishes to Docker Hub when you add repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
+
+After enabling Actions on your GitHub repository, pushes to `main` will update the image.
