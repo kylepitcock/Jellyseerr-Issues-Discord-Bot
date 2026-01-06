@@ -9,11 +9,11 @@ Discord slash command `/issue` that sends issues to your Jellyseerr instance via
 - Node 18+ (or Docker)
 
 ## Configuration
-Copy [/.env.example](.env.example) to `.env` and fill in:
+Set the following environment variables (via Docker or your shell):
 
 - `DISCORD_TOKEN` – bot token
 - `DISCORD_APP_ID` – Discord application (client) ID
-- `DISCORD_GUILD_ID` – optional; set to a test guild to register commands instantly. Leave unset for global registration (may take up to an hour to propagate).
+- `DISCORD_GUILD_ID` – optional; set to a test guild to register commands instantly. Leave unset for global registration (can take up to an hour to propagate)
 - `JELLYSEERR_API_URL` – base URL, e.g. `https://jellyseerr.example.com`
 - `JELLYSEERR_API_KEY` – API key from Jellyseerr
 
@@ -58,8 +58,8 @@ docker run \
 ```yaml
 services:
   jellyseerr-issue-bot:
-    # Use the prebuilt image from GHCR (pinned to known-good build)
-    image: ghcr.io/kylepitcock/jellyseerr-issue-bot:ff69d0539c86095801b867a2a42772e520483231
+    # Use the prebuilt image from GHCR
+    image: ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
     environment:
       DISCORD_TOKEN: your-token
       DISCORD_APP_ID: your-app-id
@@ -75,12 +75,39 @@ docker compose up -d
 docker compose logs -f
 ```
 
-## Slash command
-`/issue` accepts:
-- `title` (required)
-- `description` (required)
+## Slash Command: `/issue`
+Options:
+- `title` (required) – search query used to resolve media unless `mediaid` is provided
+- `mediatype` (required) – `movie` or `tv`
+- `reason` (required) – `video`, `audio`, `subtitle`, or `other`
+- `issuetitle` (required) – short issue title
+- `issuedescription` (required) – describe the problem; must include at least one keyword tag (see Keyword Tags below)
+- `season` (optional) – season number; required when `mediatype=tv`
+- `episode` (optional) – episode number; required when `mediatype=tv`
+- `mediaid` (optional) – Jellyseerr media ID (numeric) to skip search and use this item directly
 
-The bot posts to Jellyseerr at `POST /api/v1/issues` with payload `{ issueType: "GENERAL", title, message }`. If your Jellyseerr version uses a different endpoint or payload, adjust the `createJellyseerrIssue` function in [src/index.js](src/index.js).
+Behavior:
+- For TV, both `season` and `episode` are required; the bot will fail fast if missing.
+- The bot responds ephemerally (visible only to the requester).
+- If description lacks required tags, the bot fails fast and lists allowed tags for the chosen `mediatype` and `reason`.
+
+API call:
+- Creates issues via `POST /api/v1/issue` with `issueType` mapped to Jellyseerr/Overseerr enums. Adjust the endpoint/payload in `createJellyseerrIssue` in [src/index.js](src/index.js) if your server differs.
+
+### Keyword Tags (required in description)
+Your description must include at least one of the keywords that match the selected `mediatype` and `reason`:
+
+TV:
+- Audio: `no audio`, `no sound`, `missing audio`, `audio issue`, `wrong language`
+- Video: `no video`, `video glitch`, `black screen`, `stutter`, `pixelation`
+- Subtitle: `missing subs`, `no subtitles`, `bad subtitles`, `wrong subs`
+- Other: `buffering`, `playback error`, `corrupt file`
+
+Movie:
+- Audio: `no audio`, `no sound`, `audio issue`, `wrong language`
+- Video: `no video`, `video missing`, `bad video`, `black screen`
+- Subtitle: `missing subs`, `no subtitles`, `bad subtitles`
+- Other: `buffering`, `playback error`, `corrupt file`
 
 ## Notes
 - For faster testing, set `DISCORD_GUILD_ID` so commands are registered per-guild instead of globally.
@@ -91,7 +118,7 @@ The bot posts to Jellyseerr at `POST /api/v1/issues` with payload `{ issueType: 
 This repo includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml` that:
 - Builds multi-arch (amd64 + arm64) images from the Dockerfile
 - Publishes to GHCR at `ghcr.io/<owner>/jellyseerr-issue-bot`
-- Optionally publishes to Docker Hub when you add repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
+- You can extend it to publish to Docker Hub if desired
 
 After enabling Actions on your GitHub repository, pushes to `main` will update the image.
 
