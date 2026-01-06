@@ -1,0 +1,15 @@
+{
+  "name": "jellyseerr-issue-bot",
+  "version": "0.1.0",
+  "description": "Discord bot that creates Jellyseerr issues via API",
+  "main": "src/index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.3",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  }
+}
