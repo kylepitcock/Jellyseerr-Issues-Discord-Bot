@@ -99,16 +99,22 @@ const commands = [
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
 
 async function registerCommands() {
-  const route = DISCORD_GUILD_ID
-    ? Routes.applicationGuildCommands(DISCORD_APP_ID, DISCORD_GUILD_ID)
-    : Routes.applicationCommands(DISCORD_APP_ID);
+  const globalRoute = Routes.applicationCommands(DISCORD_APP_ID);
+  if (DISCORD_GUILD_ID) {
+    const guildRoute = Routes.applicationGuildCommands(DISCORD_APP_ID, DISCORD_GUILD_ID);
+    console.log(`Registering slash commands for guild ${DISCORD_GUILD_ID}...`);
+    await rest.put(guildRoute, { body: commands });
+    console.log('Guild commands registered');
 
-  console.log(
-    `Registering slash commands ${DISCORD_GUILD_ID ? 'for guild ' + DISCORD_GUILD_ID : 'globally'}...`,
-  );
-
-  await rest.put(route, { body: commands });
-  console.log('Slash commands registered');
+    // Clear global commands to avoid duplicates showing in the client
+    console.log('Clearing global commands to prevent duplicates...');
+    await rest.put(globalRoute, { body: [] });
+    console.log('Global commands cleared');
+  } else {
+    console.log('Registering slash commands globally...');
+    await rest.put(globalRoute, { body: commands });
+    console.log('Global commands registered');
+  }
 }
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
