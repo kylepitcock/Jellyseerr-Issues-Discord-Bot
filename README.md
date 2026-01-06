@@ -94,3 +94,13 @@ This repo includes a GitHub Actions workflow at `.github/workflows/docker-publis
 - Optionally publishes to Docker Hub when you add repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
 
 After enabling Actions on your GitHub repository, pushes to `main` will update the image.
+
+### GHCR Access Troubleshooting
+If you see `denied` when pulling from GHCR (e.g., `Head "https://ghcr.io/.../manifests/latest": denied`), do one of the following:
+- Make the package public: open `https://github.com/users/<your-username>/packages/container/jellyseerr-issue-bot` and set visibility to Public.
+- Or authenticate to GHCR on the remote host using a GitHub Personal Access Token (classic) with `read:packages` scope:
+  ```sh
+  docker login ghcr.io -u <your-username> -p <your-PAT>
+  docker pull ghcr.io/<your-username>/jellyseerr-issue-bot:latest
+  ```
+If you prefer anonymous pulls without auth, set the package to Public after the first push.
