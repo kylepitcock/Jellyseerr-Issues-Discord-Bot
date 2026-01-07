@@ -5,6 +5,7 @@ Discord slash command `/issue` that sends issues to your Jellyseerr instance via
 ## Prerequisites
 - DiscordOutput notes:
 - When Jellyseerr returns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
+- Download size information (downloaded / total) is shown when available from Radarr/Sonarr.
 - If those fields aren't available for the item, the bot will fall back to showing the best available status/availability info.
 
 Examples:
@@ -23,7 +24,7 @@ Options:
 Behavior:
 - The bot replies publicly (visible to everyone in the channel).
 - It queries both Radarr and Sonarr (if configured) and combines the results, sorted by download progress.
-- Each item shows a progress bar, percentage complete, current state (e.g., "Downloading"), and estimated time remaining.
+- Each item shows a progress bar, percentage complete, current state (e.g., "Downloading"), estimated time remaining, and download size (downloaded / total).
 - Requires at least one of `RADARR_URL`/`RADARR_API_KEY` or `SONARR_URL`/`SONARR_API_KEY` to be configured.
 
 Example output:
@@ -32,11 +33,11 @@ Download Queue (5 items)
 
 1. The Matrix Resurrections
    ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░  67%
-   Downloading • ETA: 5m 32s
+   Downloading • ETA: 5m 32s • 3.50 GB / 5.20 GB
 
 2. The Office S09E23
    ▓▓▓▓▓▓▓░░░░░░░░░░░  42%
-   Downloading • ETA: 12m 8s
+   Downloading • ETA: 12m 8s • 840.00 MB / 2.00 GB
 ```
 
 Examples:
@@ -223,21 +224,3 @@ Movie:
 - For faster testing, set `DISCORD_GUILD_ID` so commands are registered per-guild instead of globally.
 - The bot replies ephemerally to the user to avoid channel noise.
 - Logs are printed to stdout; pair with your container logging solution if you need persistence.
-
-### CI: Publishing to Registries
-This repo includes a GitHub Actions workflow at `.github/workflows/docker-publish.yml` that:
-- Builds multi-arch (amd64 + arm64) images from the Dockerfile
-- Publishes to GHCR at `ghcr.io/<owner>/jellyseerr-issue-bot`
-- You can extend it to publish to Docker Hub if desired
-
-After enabling Actions on your GitHub repository, pushes to `main` will update the image.
-
-### GHCR Access Troubleshooting
-If you see `denied` when pulling from GHCR (e.g., `Head "https://ghcr.io/.../manifests/latest": denied`), do one of the following:
-- Make the package public: open `https://github.com/users/<your-username>/packages/container/jellyseerr-issue-bot` and set visibility to Public.
-- Or authenticate to GHCR on the remote host using a GitHub Personal Access Token (classic) with `read:packages` scope:
-  ```sh
-  docker login ghcr.io -u <your-username> -p <your-PAT>
-  docker pull ghcr.io/<your-username>/jellyseerr-issue-bot:latest
-  ```
-If you prefer anonymous pulls without auth, set the package to Public after the first push.

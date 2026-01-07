@@ -298,7 +298,22 @@ client.on('interactionCreate', async (interaction) => {
           lines.push(left);
         }
 
-        lines.push(`Type: ${item.type === 'movie' ? 'Movie' : 'TV Show'}`);
+        // Add size and type information
+        const metaParts = [];
+        metaParts.push(`Type: ${item.type === 'movie' ? 'Movie' : 'TV Show'}`);
+        
+        if (item.totalBytes) {
+          const totalSize = formatBytes(item.totalBytes);
+          if (item.sizeleftBytes !== null && item.sizeleftBytes !== undefined) {
+            const downloaded = item.totalBytes - item.sizeleftBytes;
+            const downloadedSize = formatBytes(downloaded);
+            metaParts.push(`Size: ${downloadedSize} / ${totalSize}`);
+          } else {
+            metaParts.push(`Size: ${totalSize}`);
+          }
+        }
+        
+        lines.push(metaParts.join(' • '));
 
         await interaction.editReply(`\`\`\`\n${lines.join('\n')}\n\`\`\``);
         return;
@@ -484,6 +499,7 @@ function mapArrQueueToDownloadStatus(queueItem) {
 
   // Optional: surface remaining size if present (used by formatter as a hint in debug)
   const sizeleftBytes = typeof queueItem?.sizeleft === 'number' ? queueItem.sizeleft : null;
+  const totalBytes = typeof queueItem?.size === 'number' ? queueItem.size : null;
 
   if (STATUS_DEBUG_ENABLED) {
     console.log('[mapArrQueue] extracted ETA:', {
@@ -491,6 +507,8 @@ function mapArrQueueToDownloadStatus(queueItem) {
       etaHuman,
       percent,
       state,
+      totalBytes,
+      sizeleftBytes,
     });
   }
 
@@ -499,6 +517,7 @@ function mapArrQueueToDownloadStatus(queueItem) {
     state,
     etaHuman,
     sizeleftBytes,
+    totalBytes,
   };
 }
 
@@ -637,6 +656,22 @@ function formatEta(seconds) {
   return `${sec}s`;
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  // Show 2 decimal places for MB and above, 0 for B and KB
+  const decimals = unitIndex >= 2 ? 2 : 0;
+  return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
 function parseTimeLeftString(timeStr) {
   // Parse Radarr/Sonarr timeleft format like "00:15:30" or "1:23:45"
   if (typeof timeStr !== 'string' || !timeStr.trim()) return null;
@@ -699,11 +734,15 @@ function extractDownloadStatus(data) {
   const stateFields = ['state', 'status', 'downloadState', 'downloadStatus', 'mediaStatus'];
   const etaFields = ['timeLeft', 'eta', 'etaSeconds', 'secondsLeft', 'timeRemaining', 'timeleft'];
   const titleFields = ['title', 'name', 'originalTitle'];
+  const sizeFields = ['size', 'totalSize', 'totalBytes', 'fileSize'];
+  const sizeleftFields = ['sizeleft', 'sizeLeft', 'remaining', 'remainingBytes'];
 
   let percent;
   let state;
   let etaSeconds;
   let resolution;
+  let totalBytes;
+  let sizeleftBytes;
 
   for (const obj of candidates) {
     if (percent === undefined) {
@@ -747,6 +786,26 @@ function extractDownloadStatus(data) {
       const v = obj?.quality || obj?.resolution;
       if (typeof v === 'string' && v.trim()) resolution = v.trim();
     }
+
+    if (totalBytes === undefined) {
+      for (const f of sizeFields) {
+        const v = obj?.[f];
+        if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+          totalBytes = v;
+          break;
+        }
+      }
+    }
+
+    if (sizeleftBytes === undefined) {
+      for (const f of sizeleftFields) {
+        const v = obj?.[f];
+        if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+          sizeleftBytes = v;
+          break;
+        }
+      }
+    }
   }
 
   // Sometimes percent is an int but 0..1 or 0..100; handled above.
@@ -775,6 +834,8 @@ function extractDownloadStatus(data) {
     state: state || null,
     etaHuman,
     resolution: resolution || null,
+    totalBytes: totalBytes || null,
+    sizeleftBytes: sizeleftBytes !== undefined ? sizeleftBytes : null,
   };
 }
 
@@ -851,6 +912,19 @@ function formatMediaStatusCard(data, { mediaId, mediaType } = {}) {
   const meta = [];
   meta.push(`Available: ${available === null ? 'unknown' : (available ? 'Yes' : 'No')}`);
   if (download.resolution) meta.push(`Quality: ${download.resolution}`);
+  
+  // Add size information if available
+  if (download.totalBytes) {
+    const totalSize = formatBytes(download.totalBytes);
+    if (download.sizeleftBytes !== null && download.sizeleftBytes !== undefined) {
+      const downloaded = download.totalBytes - download.sizeleftBytes;
+      const downloadedSize = formatBytes(downloaded);
+      meta.push(`Size: ${downloadedSize} / ${totalSize}`);
+    } else {
+      meta.push(`Size: ${totalSize}`);
+    }
+  }
+  
   if (mediaType && mediaId) {
     meta.push(`ID: ${mediaType}/${mediaId}`);
   }
@@ -1023,6 +1097,19 @@ function formatQueueCard(items, limit) {
     const statusParts = [];
     if (item.state) statusParts.push(titleCaseWord(item.state));
     if (item.etaHuman) statusParts.push(`ETA: ${item.etaHuman}`);
+    
+    // Add size information if available
+    if (item.totalBytes) {
+      const totalSize = formatBytes(item.totalBytes);
+      if (item.sizeleftBytes !== null && item.sizeleftBytes !== undefined) {
+        const downloaded = item.totalBytes - item.sizeleftBytes;
+        const downloadedSize = formatBytes(downloaded);
+        statusParts.push(`${downloadedSize} / ${totalSize}`);
+      } else {
+        statusParts.push(totalSize);
+      }
+    }
+    
     if (statusParts.length > 0) {
       lines.push(`   ${statusParts.join(' • ')}`);
     }
