@@ -121,6 +121,17 @@ const samples = [
     mediaInfo: { status: 'Downloading', progressPercent: 0.73, secondsLeft: 120 },
   },
   {
+    // shape 4 (Arr-like): progress may be absent; compute from size/sizeleft
+    title: 'Arr Movie',
+    download: { state: 'Downloading' },
+    queue: {
+      status: 'downloading',
+      size: 1000,
+      sizeleft: 250,
+      estimatedCompletionTime: new Date(Date.now() + 45_000).toISOString(),
+    },
+  },
+  {
     // shape 3 (no progress)
     title: 'Already Available',
     available: true,

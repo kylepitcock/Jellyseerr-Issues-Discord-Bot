@@ -358,21 +358,61 @@ async function fetchSonarrQueueItemBySeriesId(seriesId) {
 function mapArrQueueToDownloadStatus(queueItem) {
   if (!queueItem) return null;
   // shared-ish fields across Radarr/Sonarr
-  const percent = Number.isFinite(queueItem?.progress) ? queueItem.progress : null;
-  const state = queueItem?.status || queueItem?.trackedDownloadStatus || queueItem?.downloadClientStatus || null;
-  const timeleft = queueItem?.timeleft ?? queueItem?.timeLeft ?? null;
-  // timeleft can be string like "00:03:10" in some versions; keep string if so
+  let percent = Number.isFinite(queueItem?.progress) ? queueItem.progress : null;
+
+  // If progress isn't present, try to compute from size/sizeleft (bytes)
+  if (percent === null) {
+    const size = typeof queueItem?.size === 'number' ? queueItem.size : null;
+    const sizeleft = typeof queueItem?.sizeleft === 'number' ? queueItem.sizeleft : null;
+    if (size && sizeleft !== null && size > 0) {
+      percent = ((size - sizeleft) / size) * 100;
+    }
+  }
+
+  // Normalize percent to 0..100
+  if (typeof percent === 'number' && Number.isFinite(percent)) {
+    percent = clamp(percent, 0, 100);
+  } else {
+    percent = null;
+  }
+
+  const state = queueItem?.status
+    || queueItem?.trackedDownloadStatus
+    || queueItem?.downloadClientStatus
+    || queueItem?.statusMessages?.[0]?.title
+    || null;
+
+  // ETA/time remaining
   let etaHuman = null;
-  if (typeof timeleft === 'string' && timeleft.trim()) {
+  const timeleft = queueItem?.timeleft ?? queueItem?.timeLeft ?? queueItem?.timeLeftSeconds ?? null;
+
+  // Radarr/Sonarr sometimes provides an ISO timestamp
+  const estimatedCompletionTime = queueItem?.estimatedCompletionTime ? new Date(queueItem.estimatedCompletionTime) : null;
+  if (!etaHuman && estimatedCompletionTime && !Number.isNaN(estimatedCompletionTime.getTime())) {
+    const diffSeconds = Math.round((estimatedCompletionTime.getTime() - Date.now()) / 1000);
+    if (diffSeconds >= 0) etaHuman = formatEta(diffSeconds);
+  }
+
+  // timeleft can be string like "00:03:10" or "0:03:10"; keep string if so
+  if (!etaHuman && typeof timeleft === 'string' && timeleft.trim()) {
     etaHuman = timeleft.trim();
-  } else if (typeof timeleft === 'number' && Number.isFinite(timeleft)) {
+  } else if (!etaHuman && typeof timeleft === 'number' && Number.isFinite(timeleft)) {
     etaHuman = formatEta(timeleft);
   }
+
+  // Some clients provide remainingSeconds
+  if (!etaHuman && typeof queueItem?.remainingTime === 'number' && Number.isFinite(queueItem.remainingTime)) {
+    etaHuman = formatEta(queueItem.remainingTime);
+  }
+
+  // Optional: surface remaining size if present (used by formatter as a hint in debug)
+  const sizeleftBytes = typeof queueItem?.sizeleft === 'number' ? queueItem.sizeleft : null;
 
   return {
     percent,
     state,
     etaHuman,
+    sizeleftBytes,
   };
 }
 
@@ -381,12 +421,40 @@ async function fetchArrDownloadStatus(mediaType, jellyseerrData) {
   if (mediaType === 'movie') {
     const movieId = await fetchRadarrMovieIdByTmdbId(ids.tmdbId);
     const queueItem = await fetchRadarrQueueItemByMovieId(movieId);
+    if (STATUS_DEBUG_ENABLED && queueItem) {
+      console.log('[status] radarr queue match:', JSON.stringify({
+        movieId,
+        title: queueItem?.title,
+        status: queueItem?.status,
+        trackedDownloadStatus: queueItem?.trackedDownloadStatus,
+        downloadClientStatus: queueItem?.downloadClientStatus,
+        progress: queueItem?.progress,
+        size: queueItem?.size,
+        sizeleft: queueItem?.sizeleft,
+        timeleft: queueItem?.timeleft,
+        estimatedCompletionTime: queueItem?.estimatedCompletionTime,
+      }, null, 2));
+    }
     return mapArrQueueToDownloadStatus(queueItem);
   }
 
   if (mediaType === 'tv') {
     const seriesId = await fetchSonarrSeriesIdByTvdbId(ids.tvdbId);
     const queueItem = await fetchSonarrQueueItemBySeriesId(seriesId);
+    if (STATUS_DEBUG_ENABLED && queueItem) {
+      console.log('[status] sonarr queue match:', JSON.stringify({
+        seriesId,
+        title: queueItem?.title,
+        status: queueItem?.status,
+        trackedDownloadStatus: queueItem?.trackedDownloadStatus,
+        downloadClientStatus: queueItem?.downloadClientStatus,
+        progress: queueItem?.progress,
+        size: queueItem?.size,
+        sizeleft: queueItem?.sizeleft,
+        timeleft: queueItem?.timeleft,
+        estimatedCompletionTime: queueItem?.estimatedCompletionTime,
+      }, null, 2));
+    }
     return mapArrQueueToDownloadStatus(queueItem);
   }
 
