@@ -107,8 +107,12 @@ Options:
 
 Behavior:
 - The bot replies ephemerally (visible only to the requester).
-- It will try to fetch detailed media info from Jellyseerr and present a short summary (Title, Available, Status, and sometimes Seasons for TV).
+- It will try to fetch detailed media info from Jellyseerr and present a status “card” (in a code block) including a progress bar and ETA when available.
 - Jellyseerr API implementations vary by version; if a detailed endpoint isn’t available, the bot falls back to search-based info.
+
+Output notes:
+- When Jellyseerr returns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
+- If those fields aren’t available for the item, the bot will fall back to showing the best available status/availability info.
 
 Examples:
 ```text

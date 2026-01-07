@@ -278,38 +278,7 @@ async function fetchMediaStatus(mediaId, mediaType) {
     const res = await axios.get(url, { headers });
     const data = res.data;
 
-    // Build a human-friendly status message based on common fields
-    const lines = [];
-    const title = data.title || data.name || data.mediaInfo?.title || 'Unknown title';
-    lines.push(`Title: ${title}`);
-
-    if (data.available !== undefined) {
-      lines.push(`Available: ${data.available ? 'Yes' : 'No'}`);
-    }
-
-    if (data.status) {
-      lines.push(`Status: ${data.status}`);
-    }
-
-    // If there is a download or file info, try to surface it
-    if (data.mediaInfo) {
-      const mi = data.mediaInfo;
-      if (mi.status) lines.push(`Media status: ${mi.status}`);
-      if (mi.releaseDate) lines.push(`Release date: ${mi.releaseDate}`);
-    }
-
-    // For TV, include seasons/episodes availability if present
-    if (mediaType === 'tv' && Array.isArray(data.seasons)) {
-      const seasons = data.seasons.map((s) => `S${s.seasonNumber}: ${s.episodeCount} eps`).join(', ');
-      if (seasons) lines.push(`Seasons: ${seasons}`);
-    }
-
-    // Fall back to a JSON snippet if we couldn't find friendly fields
-    if (lines.length === 1) {
-      return `Status for ${mediaType} ${mediaId}:\n\n${JSON.stringify(data, null, 2)}`;
-    }
-
-    return lines.join('\n');
+    return formatMediaStatusCard(data, { mediaId, mediaType });
   } catch (err) {
     // If not found, fallback to search results and try to surface availability
     try {
@@ -319,15 +288,183 @@ async function fetchMediaStatus(mediaId, mediaType) {
       const match = results.find((r) => (r.mediaInfo?.id ?? r.id) === mediaId) || results[0];
       if (!match) return `No detailed status available for id ${mediaId}`;
 
-      const title = match.title || match.name || match.mediaInfo?.title || 'Unknown title';
-      const available = match.available ?? match.mediaInfo?.available;
-      const status = match.status ?? match.mediaInfo?.status;
-      return `Title: ${title}\nAvailable: ${available === undefined ? 'unknown' : available}\nStatus: ${status ?? 'unknown'}`;
+      return formatMediaStatusCard(match, { mediaId, mediaType });
     } catch (err2) {
       // give up and return a generic message
       return 'Could not retrieve status from Jellyseerr API.';
     }
   }
+}
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function formatEta(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function makeProgressBar(percent, width = 22) {
+  if (!Number.isFinite(percent)) return null;
+  const p = clamp(percent, 0, 100);
+  const filled = Math.round((p / 100) * width);
+  const empty = width - filled;
+  // Use simple characters that render consistently in Discord monospace
+  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
+}
+
+// Attempt to extract download/progress status from a variety of possible Jellyseerr payload shapes.
+function extractDownloadStatus(data) {
+  const candidates = [
+    data,
+    data?.mediaInfo,
+    data?.media,
+    data?.media?.mediaInfo,
+    data?.download,
+    data?.mediaInfo?.download,
+    data?.downloadStatus,
+    data?.mediaInfo?.downloadStatus,
+    data?.queue,
+    data?.mediaInfo?.queue,
+  ].filter(Boolean);
+
+  // Direct percent fields we’ve seen in various integrations
+  const percentFields = ['progress', 'progressPercent', 'percent', 'percentage', 'downloadPercent', 'completion'];
+  const stateFields = ['state', 'status', 'downloadState', 'downloadStatus'];
+  const etaFields = ['timeLeft', 'eta', 'etaSeconds', 'secondsLeft', 'timeRemaining', 'timeleft'];
+  const titleFields = ['title', 'name', 'originalTitle'];
+
+  let percent;
+  let state;
+  let etaSeconds;
+  let resolution;
+
+  for (const obj of candidates) {
+    if (percent === undefined) {
+      for (const f of percentFields) {
+        const v = obj?.[f];
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          percent = v <= 1 ? v * 100 : v;
+          break;
+        }
+      }
+    }
+
+    if (!state) {
+      for (const f of stateFields) {
+        const v = obj?.[f];
+        if (typeof v === 'string' && v.trim()) {
+          state = v.trim();
+          break;
+        }
+      }
+    }
+
+    if (etaSeconds === undefined) {
+      for (const f of etaFields) {
+        const v = obj?.[f];
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          // heuristic: if it's super large it might be ms
+          etaSeconds = v > 100000 ? Math.round(v / 1000) : v;
+          break;
+        }
+        if (typeof v === 'string' && v.trim()) {
+          // If it’s already a user-friendly string (e.g. "9 seconds") store as-is by using NaN sentinel
+          // We’ll return it in `etaHuman` below.
+          etaSeconds = NaN;
+          break;
+        }
+      }
+    }
+
+    if (!resolution) {
+      const v = obj?.quality || obj?.resolution;
+      if (typeof v === 'string' && v.trim()) resolution = v.trim();
+    }
+  }
+
+  // Sometimes percent is an int but 0..1 or 0..100; handled above.
+  if (typeof percent === 'number' && Number.isFinite(percent)) {
+    percent = clamp(percent, 0, 100);
+  } else {
+    percent = null;
+  }
+
+  // Try to find an ETA human string in common places
+  let etaHuman = null;
+  if (etaSeconds === NaN) {
+    for (const obj of candidates) {
+      const v = obj?.eta || obj?.timeLeft || obj?.timeRemaining || obj?.timeleft;
+      if (typeof v === 'string' && v.trim()) {
+        etaHuman = v.trim();
+        break;
+      }
+    }
+  } else {
+    etaHuman = formatEta(etaSeconds);
+  }
+
+  return {
+    percent,
+    state: state || null,
+    etaHuman,
+    resolution: resolution || null,
+  };
+}
+
+function getDisplayTitle(data) {
+  return data?.title || data?.name || data?.mediaInfo?.title || data?.mediaInfo?.name || 'Unknown title';
+}
+
+function normalizeAvailable(data) {
+  const v = data?.available ?? data?.mediaInfo?.available;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v > 0;
+  return null;
+}
+
+function formatMediaStatusCard(data, { mediaId, mediaType }) {
+  const title = getDisplayTitle(data);
+  const available = normalizeAvailable(data);
+  const download = extractDownloadStatus(data);
+
+  // Prefer a friendly overall status if present
+  const rawStatus = data?.status ?? data?.mediaInfo?.status ?? null;
+  const stateLabel = download.state || rawStatus || (available === true ? 'Available' : available === false ? 'Not available' : 'Unknown');
+
+  const lines = [];
+  lines.push(title);
+
+  if (download.percent !== null) {
+    const bar = makeProgressBar(download.percent);
+    lines.push(`${bar}  ${Math.round(download.percent)}%`);
+  }
+
+  // Second line: state and ETA like the screenshot
+  const left = stateLabel;
+  const right = download.etaHuman ? `Estimated in ${download.etaHuman}` : null;
+  if (right) {
+    // Keep spacing readable; monospace block makes alignment decent
+    lines.push(`${left}    ${right}`);
+  } else {
+    lines.push(left);
+  }
+
+  // Extra metadata lines when present
+  const meta = [];
+  if (available !== null) meta.push(`Available: ${available ? 'Yes' : 'No'}`);
+  if (download.resolution) meta.push(`Quality: ${download.resolution}`);
+  meta.push(`ID: ${mediaType}/${mediaId}`);
+  lines.push(meta.join(' • '));
+
+  return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
 }
 
 // Jellyseerr expects numeric issueType values (aligned with Overseerr enums)
