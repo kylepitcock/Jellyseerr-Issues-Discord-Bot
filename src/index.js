@@ -97,6 +97,31 @@ const commands = [
         .setDescription('Jellyseerr media ID (numeric). Overrides search if provided')
         .setRequired(false),
     ),
+  new SlashCommandBuilder()
+    .setName('status')
+    .setDescription('Show download / availability status for a movie or TV show')
+    .addStringOption((option) =>
+      option
+        .setName('title')
+        .setDescription('Movie or TV name to search')
+        .setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('mediatype')
+        .setDescription('Is this a movie or TV show?')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Movie', value: 'movie' },
+          { name: 'TV', value: 'tv' },
+        ),
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName('mediaid')
+        .setDescription('Jellyseerr media ID (numeric). Overrides search if provided')
+        .setRequired(false),
+    ),
 ].map((command) => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
@@ -149,72 +174,161 @@ function descriptionHasRequiredKeyword(description, mediaType, reason) {
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName !== 'issue') return;
+  // Handle /issue and /status in the same listener
+  if (interaction.commandName === 'issue') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const query = interaction.options.getString('title', true);
+    const mediaId = interaction.options.getInteger('mediaid');
+    const mediaType = interaction.options.getString('mediatype', true);
+    const reason = interaction.options.getString('reason', true);
+    const issueTitle = interaction.options.getString('issuetitle', true);
+    const issueDescription = interaction.options.getString('issuedescription', true);
+    const seasonNumber = interaction.options.getInteger('season');
+    const episodeNumber = interaction.options.getInteger('episode');
 
-  const query = interaction.options.getString('title', true);
-  const mediaId = interaction.options.getInteger('mediaid');
-  const mediaType = interaction.options.getString('mediatype', true);
-  const reason = interaction.options.getString('reason', true);
-  const issueTitle = interaction.options.getString('issuetitle', true);
-  const issueDescription = interaction.options.getString('issuedescription', true);
-  const seasonNumber = interaction.options.getInteger('season');
-  const episodeNumber = interaction.options.getInteger('episode');
+    const keywordHint = getKeywordHint(mediaType, reason);
+    if (keywordHint) {
+      await interaction.followUp({ content: keywordHint, flags: MessageFlags.Ephemeral });
+    }
 
-  const keywordHint = getKeywordHint(mediaType, reason);
-  if (keywordHint) {
-    await interaction.followUp({ content: keywordHint, flags: MessageFlags.Ephemeral });
-  }
+    // Enforce keyword presence only when enabled
+    if (REMEDIARR_ENABLED) {
+      const hasTag = descriptionHasRequiredKeyword(issueDescription, mediaType, reason);
+      if (!hasTag) {
+        const available = getKeywordsArray(mediaType, reason).join(', ');
+        await interaction.editReply(
+          `Issue not sent: your description must include at least one of these tags for ${mediaType.toUpperCase()} ${reason.toUpperCase()}: ${available}`,
+        );
+        return;
+      }
+    }
 
-  // Enforce keyword presence only when enabled
-  if (REMEDIARR_ENABLED) {
-    const hasTag = descriptionHasRequiredKeyword(issueDescription, mediaType, reason);
-    if (!hasTag) {
-      const available = getKeywordsArray(mediaType, reason).join(', ');
+    if (mediaType === 'tv' && (!seasonNumber || !episodeNumber)) {
       await interaction.editReply(
-        `Issue not sent: your description must include at least one of these tags for ${mediaType.toUpperCase()} ${reason.toUpperCase()}: ${available}`,
+        'Issue not sent: for TV requests you must include both season and episode numbers.',
       );
       return;
     }
-  }
 
-  if (mediaType === 'tv' && (!seasonNumber || !episodeNumber)) {
-    await interaction.editReply(
-      'Issue not sent: for TV requests you must include both season and episode numbers.',
-    );
+    try {
+      const resolvedMediaId = mediaId ?? (await resolveMediaId(query, mediaType));
+
+      if (!resolvedMediaId) {
+        throw new Error('No media found. Provide mediaid or a clearer query.');
+      }
+
+      const result = await createJellyseerrIssue(
+        {
+          mediaId: resolvedMediaId,
+          mediaType,
+          reason,
+          title: issueTitle,
+          description: issueDescription,
+          seasonNumber,
+          episodeNumber,
+        },
+        interaction.user,
+      );
+      await interaction.editReply(
+        `Issue created in Jellyseerr (id: ${result.id ?? 'unknown'}). Thanks!`,
+      );
+    } catch (err) {
+      console.error('Failed to create issue', err);
+      await interaction.editReply(
+        'Sorry, I could not create the issue. Please try again or contact an admin.',
+      );
+    }
     return;
   }
 
-  try {
-    const resolvedMediaId = mediaId ?? (await resolveMediaId(query, mediaType));
+  if (interaction.commandName === 'status') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    if (!resolvedMediaId) {
-      throw new Error('No media found. Provide mediaid or a clearer query.');
+    const query = interaction.options.getString('title', true);
+    const mediaId = interaction.options.getInteger('mediaid');
+    const mediaType = interaction.options.getString('mediatype', true);
+
+    try {
+      const resolvedMediaId = mediaId ?? (await resolveMediaId(query, mediaType));
+      if (!resolvedMediaId) {
+        await interaction.editReply('No media found. Provide a clearer title or a `mediaid`.');
+        return;
+      }
+
+      const status = await fetchMediaStatus(resolvedMediaId, mediaType);
+      await interaction.editReply(status);
+    } catch (err) {
+      console.error('Failed to fetch status', err);
+      await interaction.editReply('Sorry, I could not retrieve status. Please try again later.');
     }
-
-    const result = await createJellyseerrIssue(
-      {
-        mediaId: resolvedMediaId,
-        mediaType,
-        reason,
-        title: issueTitle,
-        description: issueDescription,
-        seasonNumber,
-        episodeNumber,
-      },
-      interaction.user,
-    );
-    await interaction.editReply(
-      `Issue created in Jellyseerr (id: ${result.id ?? 'unknown'}). Thanks!`,
-    );
-  } catch (err) {
-    console.error('Failed to create issue', err);
-    await interaction.editReply(
-      'Sorry, I could not create the issue. Please try again or contact an admin.',
-    );
+    return;
   }
 });
+
+// Fetch a concise status for given media id and type from Jellyseerr
+async function fetchMediaStatus(mediaId, mediaType) {
+  const base = JELLYSEERR_API_URL.replace(/\/$/, '');
+  const headers = { 'X-Api-Key': JELLYSEERR_API_KEY, 'Content-Type': 'application/json' };
+
+  // Try media details endpoint if available
+  try {
+    // Some Jellyseerr/Overseerr variants expose /api/v1/media/:type/:id
+    const url = `${base}/api/v1/media/${mediaType}/${mediaId}`;
+    const res = await axios.get(url, { headers });
+    const data = res.data;
+
+    // Build a human-friendly status message based on common fields
+    const lines = [];
+    const title = data.title || data.name || data.mediaInfo?.title || 'Unknown title';
+    lines.push(`Title: ${title}`);
+
+    if (data.available !== undefined) {
+      lines.push(`Available: ${data.available ? 'Yes' : 'No'}`);
+    }
+
+    if (data.status) {
+      lines.push(`Status: ${data.status}`);
+    }
+
+    // If there is a download or file info, try to surface it
+    if (data.mediaInfo) {
+      const mi = data.mediaInfo;
+      if (mi.status) lines.push(`Media status: ${mi.status}`);
+      if (mi.releaseDate) lines.push(`Release date: ${mi.releaseDate}`);
+    }
+
+    // For TV, include seasons/episodes availability if present
+    if (mediaType === 'tv' && Array.isArray(data.seasons)) {
+      const seasons = data.seasons.map((s) => `S${s.seasonNumber}: ${s.episodeCount} eps`).join(', ');
+      if (seasons) lines.push(`Seasons: ${seasons}`);
+    }
+
+    // Fall back to a JSON snippet if we couldn't find friendly fields
+    if (lines.length === 1) {
+      return `Status for ${mediaType} ${mediaId}:\n\n${JSON.stringify(data, null, 2)}`;
+    }
+
+    return lines.join('\n');
+  } catch (err) {
+    // If not found, fallback to search results and try to surface availability
+    try {
+      const searchUrl = `${base}/api/v1/search?query=${encodeURIComponent(String(mediaId))}`;
+      const searchRes = await axios.get(searchUrl, { headers });
+      const results = Array.isArray(searchRes.data?.results) ? searchRes.data.results : [];
+      const match = results.find((r) => (r.mediaInfo?.id ?? r.id) === mediaId) || results[0];
+      if (!match) return `No detailed status available for id ${mediaId}`;
+
+      const title = match.title || match.name || match.mediaInfo?.title || 'Unknown title';
+      const available = match.available ?? match.mediaInfo?.available;
+      const status = match.status ?? match.mediaInfo?.status;
+      return `Title: ${title}\nAvailable: ${available === undefined ? 'unknown' : available}\nStatus: ${status ?? 'unknown'}`;
+    } catch (err2) {
+      // give up and return a generic message
+      return 'Could not retrieve status from Jellyseerr API.';
+    }
+  }
+}
 
 // Jellyseerr expects numeric issueType values (aligned with Overseerr enums)
 // VIDEO=1, AUDIO=2, SUBTITLE=3, OTHER=4

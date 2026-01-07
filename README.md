@@ -97,6 +97,25 @@ Behavior:
 API call:
 - Creates issues via `POST /api/v1/issue` with `issueType` mapped to Jellyseerr/Overseerr enums. Adjust the endpoint/payload in `createJellyseerrIssue` in [src/index.js](src/index.js) if your server differs.
 
+## Slash Command: `/status`
+Shows the download / availability status of a specified movie or TV show.
+
+Options:
+- `title` (required) – search query used to resolve media unless `mediaid` is provided
+- `mediatype` (required) – `movie` or `tv`
+- `mediaid` (optional) – Jellyseerr media ID (numeric) to skip search and use this item directly
+
+Behavior:
+- The bot replies ephemerally (visible only to the requester).
+- It will try to fetch detailed media info from Jellyseerr and present a short summary (Title, Available, Status, and sometimes Seasons for TV).
+- Jellyseerr API implementations vary by version; if a detailed endpoint isn’t available, the bot falls back to search-based info.
+
+Examples:
+```text
+/status title:"The Matrix" mediatype:movie
+/status title:"The Office" mediatype:tv
+```
+
 ### Keyword Tags (used when `REMEDIARR_SUPPORT=true`)
 Your description must include at least one of the keywords that match the selected `mediatype` and `reason` when keyword enforcement is enabled:
 
