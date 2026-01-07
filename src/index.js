@@ -37,9 +37,6 @@ const {
   RADARR_API_KEY,
   SONARR_URL,
   SONARR_API_KEY,
-  NZBGET_URL,
-  NZBGET_USER,
-  NZBGET_PASS,
 } = process.env;
 
 const REMEDIARR_ENABLED = String(REMEDIARR_SUPPORT || '').toLowerCase() === 'true';
@@ -566,7 +563,7 @@ async function fetchArrDownloadStatus(mediaType, jellyseerrData) {
   return null;
 }
 
-// Fetch a concise status for given media id and type from Jellyseerr (optionally enriched via Radarr/Sonarr/NZBGet)
+// Fetch a concise status for given media id and type from Jellyseerr (optionally enriched via Radarr/Sonarr)
 async function fetchMediaStatus(mediaId, mediaType, queryForFallback) {
   let jellyseerrData = null;
 

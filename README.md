@@ -74,11 +74,6 @@ Sonarr (TV queue progress):
 - `SONARR_URL` – e.g. `http://sonarr:8989`
 - `SONARR_API_KEY`
 
-NZBGet (not yet used, reserved for future):
-- `NZBGET_URL`
-- `NZBGET_USER`
-- `NZBGET_PASS`
-
 ## Local run
 ```sh
 npm install
@@ -142,11 +137,6 @@ services:
       # Optional: Sonarr (tv download progress)
       SONARR_URL: http://sonarr:8989
       SONARR_API_KEY: your-sonarr-api-key
-
-      # Optional: NZBGet (reserved for future)
-      # NZBGET_URL: http://nzbget:6789
-      # NZBGET_USER: nzbget
-      # NZBGET_PASS: secret
     restart: unless-stopped
 ```
 
