@@ -414,6 +414,15 @@ function mapArrQueueToDownloadStatus(queueItem) {
   // Optional: surface remaining size if present (used by formatter as a hint in debug)
   const sizeleftBytes = typeof queueItem?.sizeleft === 'number' ? queueItem.sizeleft : null;
 
+  if (STATUS_DEBUG_ENABLED) {
+    console.log('[mapArrQueue] extracted ETA:', {
+      timeleftRaw: timeleft,
+      etaHuman,
+      percent,
+      state,
+    });
+  }
+
   return {
     percent,
     state,
@@ -519,12 +528,21 @@ async function fetchMediaStatus(mediaId, mediaType, queryForFallback) {
 
   // If arr provided progress, merge it by formatting a synthetic payload with download fields
   if (arrDownload && (arrDownload.percent !== null || arrDownload.state || arrDownload.etaHuman)) {
+    if (STATUS_DEBUG_ENABLED) {
+      console.log('[status] merging arr download:', {
+        percent: arrDownload.percent,
+        state: arrDownload.state,
+        etaHuman: arrDownload.etaHuman,
+      });
+    }
     const merged = {
       ...(jellyseerrData || {}),
       download: {
         progress: arrDownload.percent,
         state: arrDownload.state,
+        // Put the formatted ETA in a field that extractDownloadStatus will find
         eta: arrDownload.etaHuman,
+        timeLeft: arrDownload.etaHuman,
       },
     };
     return formatMediaStatusCard(merged, { mediaId, mediaType });
