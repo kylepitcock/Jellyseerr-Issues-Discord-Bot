@@ -3,7 +3,49 @@
 Discord slash command `/issue` that sends issues to your Jellyseerr instance via API.
 
 ## Prerequisites
-- Discord application and bot token with slash commands enabled
+- DiscordOutput notes:
+- When Jellyseerr returns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
+- If those fields aren't available for the item, the bot will fall back to showing the best available status/availability info.
+
+Examples:
+```text
+/status title:"The Matrix" mediatype:movie
+/status title:"The Office" mediatype:tv
+```
+
+## Slash Command: `/queue`
+Displays the current download queue, showing the top items being downloaded from Radarr and/or Sonarr.
+
+Options:
+- `limit` (optional) – number of items to show (1-25, default: 10)
+
+Behavior:
+- The bot replies publicly (visible to everyone in the channel).
+- It queries both Radarr and Sonarr (if configured) and combines the results, sorted by download progress.
+- Each item shows a progress bar, percentage complete, current state (e.g., "Downloading"), and estimated time remaining.
+- Requires at least one of `RADARR_URL`/`RADARR_API_KEY` or `SONARR_URL`/`SONARR_API_KEY` to be configured.
+
+Example output:
+```
+Download Queue (5 items)
+
+1. The Matrix Resurrections
+   ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░  67%
+   Downloading • ETA: 5m 32s
+
+2. The Office S09E23
+   ▓▓▓▓▓▓▓░░░░░░░░░░░  42%
+   Downloading • ETA: 12m 8s
+```
+
+Examples:
+```text
+/queue
+/queue limit:5
+/queue limit:25
+```
+
+### Keyword Tags (used when `REMEDIARR_SUPPORT=true`)n and bot token with slash commands enabled
 - Jellyseerr base URL reachable from the bot container
 - Jellyseerr API key
 - Node 18+ (or Docker)

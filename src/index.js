@@ -133,6 +133,17 @@ const commands = [
         .setDescription('Jellyseerr media ID (numeric). Overrides search if provided')
         .setRequired(false),
     ),
+  new SlashCommandBuilder()
+    .setName('queue')
+    .setDescription('Show the current download queue from Radarr/Sonarr')
+    .addIntegerOption((option) =>
+      option
+        .setName('limit')
+        .setDescription('Number of items to show (default 10, max 25)')
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(25),
+    ),
 ].map((command) => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
@@ -272,6 +283,28 @@ client.on('interactionCreate', async (interaction) => {
     } catch (err) {
       console.error('Failed to fetch status', err);
       await interaction.editReply('Sorry, I could not retrieve status. Please try again later.');
+    }
+    return;
+  }
+
+  if (interaction.commandName === 'queue') {
+    await interaction.deferReply();
+
+    const limit = interaction.options.getInteger('limit') || 10;
+
+    try {
+      const queueItems = await fetchAllQueueItems(limit);
+      
+      if (!queueItems || queueItems.length === 0) {
+        await interaction.editReply('No items currently in the download queue.');
+        return;
+      }
+
+      const queueCard = formatQueueCard(queueItems, limit);
+      await interaction.editReply(queueCard);
+    } catch (err) {
+      console.error('Failed to fetch queue', err);
+      await interaction.editReply('Sorry, I could not retrieve the queue. Make sure Radarr/Sonarr are configured.');
     }
     return;
   }
@@ -857,6 +890,110 @@ async function createJellyseerrIssue(issue, user) {
 
   const response = await axios.post(url, payload, { headers });
   return response.data;
+}
+
+async function fetchAllQueueItems(limit = 10) {
+  const allItems = [];
+
+  // Fetch from Radarr if configured
+  if (RADARR_URL && RADARR_API_KEY) {
+    try {
+      const base = RADARR_URL.replace(/\/$/, '');
+      const url = `${base}/api/v3/queue?page=1&pageSize=50&sortKey=timeleft&sortDirection=ascending`;
+      const res = await axios.get(url, { headers: radarrHeaders() });
+      const records = Array.isArray(res.data?.records) ? res.data.records : (Array.isArray(res.data) ? res.data : []);
+      
+      for (const item of records) {
+        const mapped = mapArrQueueToDownloadStatus(item);
+        if (mapped) {
+          allItems.push({
+            title: item.title || item.movie?.title || 'Unknown',
+            type: 'movie',
+            ...mapped,
+          });
+        }
+      }
+    } catch (err) {
+      if (STATUS_DEBUG_ENABLED) console.log('[queue] radarr fetch failed:', err?.message);
+    }
+  }
+
+  // Fetch from Sonarr if configured
+  if (SONARR_URL && SONARR_API_KEY) {
+    try {
+      const base = SONARR_URL.replace(/\/$/, '');
+      const url = `${base}/api/v3/queue?page=1&pageSize=50&sortKey=timeleft&sortDirection=ascending`;
+      const res = await axios.get(url, { headers: sonarrHeaders() });
+      const records = Array.isArray(res.data?.records) ? res.data.records : (Array.isArray(res.data) ? res.data : []);
+      
+      for (const item of records) {
+        const mapped = mapArrQueueToDownloadStatus(item);
+        if (mapped) {
+          allItems.push({
+            title: item.title || item.series?.title || 'Unknown',
+            type: 'tv',
+            ...mapped,
+          });
+        }
+      }
+    } catch (err) {
+      if (STATUS_DEBUG_ENABLED) console.log('[queue] sonarr fetch failed:', err?.message);
+    }
+  }
+
+  // Sort by timeleft (items with ETA first, then by shortest time)
+  allItems.sort((a, b) => {
+    if (!a.etaHuman && !b.etaHuman) return 0;
+    if (!a.etaHuman) return 1;
+    if (!b.etaHuman) return -1;
+    // Simple heuristic: sort by percent (higher = closer to done)
+    const aPercent = a.percent ?? 0;
+    const bPercent = b.percent ?? 0;
+    return bPercent - aPercent;
+  });
+
+  return allItems.slice(0, limit);
+}
+
+function formatQueueCard(items, limit) {
+  const lines = [];
+  lines.push(`Download Queue (${items.length} item${items.length !== 1 ? 's' : ''})`);
+  lines.push('');
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const num = `${i + 1}.`.padEnd(3);
+    
+    // Truncate title if too long
+    let displayTitle = item.title;
+    if (displayTitle.length > 50) {
+      displayTitle = displayTitle.substring(0, 47) + '...';
+    }
+    
+    lines.push(`${num}${displayTitle}`);
+    
+    // Progress bar
+    if (item.percent !== null) {
+      const bar = makeProgressBar(item.percent, 18);
+      const percentStr = `${Math.round(item.percent)}%`.padStart(4);
+      lines.push(`   ${bar} ${percentStr}`);
+    }
+    
+    // Status and ETA line
+    const statusParts = [];
+    if (item.state) statusParts.push(titleCaseWord(item.state));
+    if (item.etaHuman) statusParts.push(`ETA: ${item.etaHuman}`);
+    if (statusParts.length > 0) {
+      lines.push(`   ${statusParts.join(' • ')}`);
+    }
+    
+    // Add spacing between items (except last)
+    if (i < items.length - 1) {
+      lines.push('');
+    }
+  }
+
+  return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
 }
 
 async function main() {
