@@ -86,6 +86,23 @@ services:
       JELLYSEERR_API_URL: https://jellyseerr.example.com
       JELLYSEERR_API_KEY: your-api-key
       REMEDIARR_SUPPORT: "false"  # set to "true" to require keyword tags in descriptions
+
+      # Optional: /status configuration
+      STATUS_SOURCE: auto      # auto|jellyseerr|radarr|sonarr
+      STATUS_DEBUG: "false"    # set to "true" to log payload snippets for troubleshooting
+
+      # Optional: Radarr (movie download progress)
+      RADARR_URL: http://radarr:7878
+      RADARR_API_KEY: your-radarr-api-key
+
+      # Optional: Sonarr (tv download progress)
+      SONARR_URL: http://sonarr:8989
+      SONARR_API_KEY: your-sonarr-api-key
+
+      # Optional: NZBGet (reserved for future)
+      # NZBGET_URL: http://nzbget:6789
+      # NZBGET_USER: nzbget
+      # NZBGET_PASS: secret
     restart: unless-stopped
 ```
 
