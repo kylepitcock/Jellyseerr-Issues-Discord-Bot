@@ -687,7 +687,7 @@ function extractDownloadStatus(data) {
 
   // Try to find an ETA human string in common places
   let etaHuman = null;
-  if (etaSeconds === NaN) {
+  if (Number.isNaN(etaSeconds)) {
     for (const obj of candidates) {
       const v = obj?.eta || obj?.timeLeft || obj?.timeRemaining || obj?.timeleft;
       if (typeof v === 'string' && v.trim()) {
@@ -695,7 +695,7 @@ function extractDownloadStatus(data) {
         break;
       }
     }
-  } else {
+  } else if (typeof etaSeconds === 'number' && Number.isFinite(etaSeconds)) {
     etaHuman = formatEta(etaSeconds);
   }
 
@@ -730,6 +730,15 @@ function formatMediaStatusCard(data, { mediaId, mediaType }) {
   const title = getDisplayTitle(data);
   const available = normalizeAvailable(data);
   const download = extractDownloadStatus(data);
+
+  if (STATUS_DEBUG_ENABLED) {
+    console.log('[formatCard] extracted download:', {
+      percent: download.percent,
+      state: download.state,
+      etaHuman: download.etaHuman,
+      resolution: download.resolution,
+    });
+  }
 
   // Prefer a friendly overall status if present
   const rawStatus = normalizeStatusString(data?.status)
