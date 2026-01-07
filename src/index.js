@@ -797,7 +797,7 @@ function normalizeStatusString(v) {
   return s;
 }
 
-function formatMediaStatusCard(data, { mediaId, mediaType }) {
+function formatMediaStatusCard(data, { mediaId, mediaType } = {}) {
   const title = getDisplayTitle(data);
   const available = normalizeAvailable(data);
   const download = extractDownloadStatus(data);
@@ -851,7 +851,9 @@ function formatMediaStatusCard(data, { mediaId, mediaType }) {
   const meta = [];
   meta.push(`Available: ${available === null ? 'unknown' : (available ? 'Yes' : 'No')}`);
   if (download.resolution) meta.push(`Quality: ${download.resolution}`);
-  meta.push(`ID: ${mediaType}/${mediaId}`);
+  if (mediaType && mediaId) {
+    meta.push(`ID: ${mediaType}/${mediaId}`);
+  }
   lines.push(meta.join(' • '));
 
   return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
