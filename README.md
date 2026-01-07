@@ -199,6 +199,7 @@ Output notes:
 
 Examples:
 ```text
+/status
 /status title:"The Matrix" mediatype:movie
 /status title:"The Office" mediatype:tv
 ```

@@ -114,13 +114,13 @@ const commands = [
     .addStringOption((option) =>
       option
         .setName('title')
-        .setDescription('Movie or TV name to search (omit to show currently downloading item)')
+        .setDescription('Movie or TV name to search (leave blank for currently downloading item)')
         .setRequired(false),
     )
     .addStringOption((option) =>
       option
         .setName('mediatype')
-        .setDescription('Is this a movie or TV show? (omit to show currently downloading item)')
+        .setDescription('Is this a movie or TV show? (leave blank for currently downloading item)')
         .setRequired(false)
         .addChoices(
           { name: 'Movie', value: 'movie' },
@@ -272,35 +272,41 @@ client.on('interactionCreate', async (interaction) => {
     const mediaType = interaction.options.getString('mediatype');
 
     try {
-      // If no title or mediatype provided, fall back to showing the currently downloading item
-      if (!query && !mediaType && !mediaId) {
+      // Fallback: if no title/mediatype provided, show first item in queue
+      if (!query && !mediaId && !mediaType) {
         const queueItems = await fetchAllQueueItems(1);
         
         if (!queueItems || queueItems.length === 0) {
-          await interaction.editReply('No items currently downloading. Please specify a title and mediatype to search.');
+          await interaction.editReply('No currently downloading items. Please specify a title and mediatype.');
           return;
         }
 
-        const currentItem = queueItems[0];
-        
-        // Format the current download status card directly
-        const statusCard = formatMediaStatusCard({
-          title: currentItem.title,
-          mediaType: currentItem.type,
-          downloadStatus: {
-            percent: currentItem.percent,
-            state: currentItem.state,
-            etaHuman: currentItem.etaHuman,
-          }
-        });
-        
-        await interaction.editReply(statusCard);
+        const item = queueItems[0];
+        const lines = [];
+        lines.push(item.title);
+
+        if (item.percent !== null) {
+          const bar = makeProgressBar(item.percent);
+          lines.push(`${bar}  ${Math.round(item.percent)}%`);
+        }
+
+        const left = item.state ? titleCaseWord(item.state) : 'Downloading';
+        const right = item.etaHuman ? `Estimated in ${item.etaHuman}` : null;
+        if (right) {
+          lines.push(`${left}    ${right}`);
+        } else {
+          lines.push(left);
+        }
+
+        lines.push(`Type: ${item.type === 'movie' ? 'Movie' : 'TV Show'}`);
+
+        await interaction.editReply(`\`\`\`\n${lines.join('\n')}\n\`\`\``);
         return;
       }
 
-      // Validate that both title and mediatype are provided if one is specified
+      // Validate that both title and mediatype are provided together
       if (!query || !mediaType) {
-        await interaction.editReply('Please provide both `title` and `mediatype`, or omit both to see the currently downloading item.');
+        await interaction.editReply('Please provide both `title` and `mediatype`, or leave both blank to see the current download.');
         return;
       }
 
