@@ -30,7 +30,10 @@ const {
   DISCORD_GUILD_ID,
   JELLYSEERR_API_URL,
   JELLYSEERR_API_KEY,
+  REMEDIARR_SUPPORT,
 } = process.env;
+
+const REMEDIARR_ENABLED = String(REMEDIARR_SUPPORT || '').toLowerCase() === 'true';
 
 const commands = [
   new SlashCommandBuilder()
@@ -164,14 +167,16 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.followUp({ content: keywordHint, flags: MessageFlags.Ephemeral });
   }
 
-  // Enforce keyword presence in description
-  const hasTag = descriptionHasRequiredKeyword(issueDescription, mediaType, reason);
-  if (!hasTag) {
-    const available = getKeywordsArray(mediaType, reason).join(', ');
-    await interaction.editReply(
-      `Issue not sent: your description must include at least one of these tags for ${mediaType.toUpperCase()} ${reason.toUpperCase()}: ${available}`,
-    );
-    return;
+  // Enforce keyword presence only when enabled
+  if (REMEDIARR_ENABLED) {
+    const hasTag = descriptionHasRequiredKeyword(issueDescription, mediaType, reason);
+    if (!hasTag) {
+      const available = getKeywordsArray(mediaType, reason).join(', ');
+      await interaction.editReply(
+        `Issue not sent: your description must include at least one of these tags for ${mediaType.toUpperCase()} ${reason.toUpperCase()}: ${available}`,
+      );
+      return;
+    }
   }
 
   if (mediaType === 'tv' && (!seasonNumber || !episodeNumber)) {

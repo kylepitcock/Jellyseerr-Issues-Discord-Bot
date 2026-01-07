@@ -16,6 +16,7 @@ Set the following environment variables (via Docker or your shell):
 - `DISCORD_GUILD_ID` – optional; set to a test guild to register commands instantly. Leave unset for global registration (can take up to an hour to propagate)
 - `JELLYSEERR_API_URL` – base URL, e.g. `https://jellyseerr.example.com`
 - `JELLYSEERR_API_KEY` – API key from Jellyseerr
+- `REMEDIARR_SUPPORT` – optional; set to `true` to require descriptions to include keyword tags (see Keyword Tags below). Default: `false`.
 
 ## Local run
 ```sh
@@ -50,6 +51,7 @@ docker run \
   -e DISCORD_GUILD_ID=... \
   -e JELLYSEERR_API_URL=... \
   -e JELLYSEERR_API_KEY=... \
+  -e REMEDIARR_SUPPORT=false \
   ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
 ```
 
@@ -66,6 +68,7 @@ services:
       DISCORD_GUILD_ID: optional-guild-id
       JELLYSEERR_API_URL: https://jellyseerr.example.com
       JELLYSEERR_API_KEY: your-api-key
+      REMEDIARR_SUPPORT: "false"  # set to "true" to require keyword tags in descriptions
     restart: unless-stopped
 ```
 
@@ -89,13 +92,13 @@ Options:
 Behavior:
 - For TV, both `season` and `episode` are required; the bot will fail fast if missing.
 - The bot responds ephemerally (visible only to the requester).
-- If description lacks required tags, the bot fails fast and lists allowed tags for the chosen `mediatype` and `reason`.
+- Keyword requirement: only enforced when `REMEDIARR_SUPPORT=true`. If enabled and the description lacks required tags, the bot fails fast and lists allowed tags for the chosen `mediatype` and `reason`.
 
 API call:
 - Creates issues via `POST /api/v1/issue` with `issueType` mapped to Jellyseerr/Overseerr enums. Adjust the endpoint/payload in `createJellyseerrIssue` in [src/index.js](src/index.js) if your server differs.
 
-### Keyword Tags (required in description)
-Your description must include at least one of the keywords that match the selected `mediatype` and `reason`:
+### Keyword Tags (used when `REMEDIARR_SUPPORT=true`)
+Your description must include at least one of the keywords that match the selected `mediatype` and `reason` when keyword enforcement is enabled:
 
 TV:
 - Audio: `no audio`, `no sound`, `missing audio`, `audio issue`, `wrong language`
