@@ -9,8 +9,9 @@ Discord slash command `/issue` that sends issues to your Jellyseerr instance via
 
 Examples:
 ```text
-/status title:"The Matrix" mediatype:movie
-/status title:"The Office" mediatype:tv
+/status                                      # Show currently downloading item
+/status title:"The Matrix" mediatype:movie   # Look up specific movie
+/status title:"The Office" mediatype:tv      # Look up specific TV show
 ```
 
 ## Slash Command: `/queue`
@@ -174,15 +175,17 @@ API call:
 - Creates issues via `POST /api/v1/issue` with `issueType` mapped to Jellyseerr/Overseerr enums. Adjust the endpoint/payload in `createJellyseerrIssue` in [src/index.js](src/index.js) if your server differs.
 
 ## Slash Command: `/status`
-Shows the download / availability status of a specified movie or TV show.
+Shows the download / availability status of a specified movie or TV show. If no parameters are provided, shows the currently downloading item.
 
 Options:
-- `title` (required) – search query used to resolve media unless `mediaid` is provided
-- `mediatype` (required) – `movie` or `tv`
+- `title` (optional) – search query used to resolve media unless `mediaid` is provided. Omit to show currently downloading item.
+- `mediatype` (optional) – `movie` or `tv`. Omit to show currently downloading item.
 - `mediaid` (optional) – Jellyseerr media ID (numeric) to skip search and use this item directly
 
 Behavior:
-- The bot replies ephemerally (visible only to the requester).
+- The bot replies publicly (visible to everyone).
+- **Quick status check**: Use `/status` with no parameters to see what's currently downloading (first item in the queue).
+- **Specific lookup**: Provide both `title` and `mediatype` to look up a specific movie or TV show.
 - It will try to fetch detailed media info from Jellyseerr and present a status “card” (in a code block) including a progress bar and ETA when available.
 - Jellyseerr API implementations vary by version; if a detailed endpoint isn’t available, the bot falls back to search-based info.
 

@@ -114,14 +114,14 @@ const commands = [
     .addStringOption((option) =>
       option
         .setName('title')
-        .setDescription('Movie or TV name to search')
-        .setRequired(true),
+        .setDescription('Movie or TV name to search (omit to show currently downloading item)')
+        .setRequired(false),
     )
     .addStringOption((option) =>
       option
         .setName('mediatype')
-        .setDescription('Is this a movie or TV show?')
-        .setRequired(true)
+        .setDescription('Is this a movie or TV show? (omit to show currently downloading item)')
+        .setRequired(false)
         .addChoices(
           { name: 'Movie', value: 'movie' },
           { name: 'TV', value: 'tv' },
@@ -267,18 +267,50 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.commandName === 'status') {
     await interaction.deferReply();
 
-    const query = interaction.options.getString('title', true);
+    const query = interaction.options.getString('title');
     const mediaId = interaction.options.getInteger('mediaid');
-    const mediaType = interaction.options.getString('mediatype', true);
+    const mediaType = interaction.options.getString('mediatype');
 
     try {
+      // If no title or mediatype provided, fall back to showing the currently downloading item
+      if (!query && !mediaType && !mediaId) {
+        const queueItems = await fetchAllQueueItems(1);
+        
+        if (!queueItems || queueItems.length === 0) {
+          await interaction.editReply('No items currently downloading. Please specify a title and mediatype to search.');
+          return;
+        }
+
+        const currentItem = queueItems[0];
+        
+        // Format the current download status card directly
+        const statusCard = formatMediaStatusCard({
+          title: currentItem.title,
+          mediaType: currentItem.type,
+          downloadStatus: {
+            percent: currentItem.percent,
+            state: currentItem.state,
+            etaHuman: currentItem.etaHuman,
+          }
+        });
+        
+        await interaction.editReply(statusCard);
+        return;
+      }
+
+      // Validate that both title and mediatype are provided if one is specified
+      if (!query || !mediaType) {
+        await interaction.editReply('Please provide both `title` and `mediatype`, or omit both to see the currently downloading item.');
+        return;
+      }
+
       const resolvedMediaId = mediaId ?? (await resolveMediaId(query, mediaType));
       if (!resolvedMediaId) {
         await interaction.editReply('No media found. Provide a clearer title or a `mediaid`.');
         return;
       }
 
-  const status = await fetchMediaStatus(resolvedMediaId, mediaType, query);
+      const status = await fetchMediaStatus(resolvedMediaId, mediaType, query);
       await interaction.editReply(status);
     } catch (err) {
       console.error('Failed to fetch status', err);
