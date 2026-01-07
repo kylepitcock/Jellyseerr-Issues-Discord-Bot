@@ -254,7 +254,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.commandName === 'status') {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     const query = interaction.options.getString('title', true);
     const mediaId = interaction.options.getInteger('mediaid');
@@ -393,9 +393,15 @@ function mapArrQueueToDownloadStatus(queueItem) {
     if (diffSeconds >= 0) etaHuman = formatEta(diffSeconds);
   }
 
-  // timeleft can be string like "00:03:10" or "0:03:10"; keep string if so
+  // timeleft can be string like "00:03:10" or "0:03:10"; parse it
   if (!etaHuman && typeof timeleft === 'string' && timeleft.trim()) {
-    etaHuman = timeleft.trim();
+    const parsedSeconds = parseTimeLeftString(timeleft);
+    if (parsedSeconds !== null) {
+      etaHuman = formatEta(parsedSeconds);
+    } else {
+      // Keep the original string if we couldn't parse it
+      etaHuman = timeleft.trim();
+    }
   } else if (!etaHuman && typeof timeleft === 'number' && Number.isFinite(timeleft)) {
     etaHuman = formatEta(timeleft);
   }
@@ -540,6 +546,29 @@ function formatEta(seconds) {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
+}
+
+function parseTimeLeftString(timeStr) {
+  // Parse Radarr/Sonarr timeleft format like "00:15:30" or "1:23:45"
+  if (typeof timeStr !== 'string' || !timeStr.trim()) return null;
+  const parts = timeStr.trim().split(':');
+  if (parts.length < 2) return null;
+  
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+  
+  if (parts.length === 3) {
+    hours = parseInt(parts[0], 10) || 0;
+    minutes = parseInt(parts[1], 10) || 0;
+    seconds = parseInt(parts[2], 10) || 0;
+  } else if (parts.length === 2) {
+    minutes = parseInt(parts[0], 10) || 0;
+    seconds = parseInt(parts[1], 10) || 0;
+  }
+  
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+  return totalSeconds > 0 ? totalSeconds : null;
 }
 
 function makeProgressBar(percent, width = 22) {
