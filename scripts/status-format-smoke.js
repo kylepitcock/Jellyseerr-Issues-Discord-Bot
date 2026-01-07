@@ -23,7 +23,7 @@ function makeProgressBar(percent, width = 22) {
   const p = clamp(percent, 0, 100);
   const filled = Math.round((p / 100) * width);
   const empty = width - filled;
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
+  return `${'▓'.repeat(filled)}${'░'.repeat(empty)}`;
 }
 
 function extractDownloadStatus(data) {

@@ -547,8 +547,18 @@ function makeProgressBar(percent, width = 22) {
   const p = clamp(percent, 0, 100);
   const filled = Math.round((p / 100) * width);
   const empty = width - filled;
-  // Use simple characters that render consistently in Discord monospace
-  return `${'█'.repeat(filled)}${'░'.repeat(empty)}`;
+  // These render nicely in Discord monospace and look closer to a UI bar
+  return `${'▓'.repeat(filled)}${'░'.repeat(empty)}`;
+}
+
+function titleCaseWord(s) {
+  if (typeof s !== 'string') return s;
+  if (!s.trim()) return s;
+  return s
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w.length ? (w[0].toUpperCase() + w.slice(1).toLowerCase()) : w))
+    .join(' ');
 }
 
 // Attempt to extract download/progress status from a variety of possible Jellyseerr payload shapes.
@@ -681,9 +691,9 @@ function formatMediaStatusCard(data, { mediaId, mediaType }) {
     ?? normalizeStatusString(data?.mediaStatus)
     ?? null;
 
-  const stateLabel = normalizeStatusString(download.state)
+  const stateLabel = titleCaseWord(normalizeStatusString(download.state)
     || rawStatus
-    || (available === true ? 'Available' : available === false ? 'Not available' : 'Status unavailable');
+    || (available === true ? 'Available' : available === false ? 'Not available' : 'Status unavailable'));
 
   const lines = [];
   lines.push(title);
@@ -691,6 +701,13 @@ function formatMediaStatusCard(data, { mediaId, mediaType }) {
   if (download.percent !== null) {
     const bar = makeProgressBar(download.percent);
     lines.push(`${bar}  ${Math.round(download.percent)}%`);
+  } else {
+    // If we're downloading but don't have a percent, show a placeholder bar
+    const maybeDownloading = (stateLabel || '').toLowerCase().includes('download');
+    if (maybeDownloading) {
+      const placeholder = `${'░'.repeat(22)}`;
+      lines.push(`${placeholder}  ?%`);
+    }
   }
 
   // Second line: state and ETA like the screenshot
