@@ -31,9 +31,20 @@ const {
   JELLYSEERR_API_URL,
   JELLYSEERR_API_KEY,
   REMEDIARR_SUPPORT,
+  STATUS_DEBUG,
+  STATUS_SOURCE,
+  RADARR_URL,
+  RADARR_API_KEY,
+  SONARR_URL,
+  SONARR_API_KEY,
+  NZBGET_URL,
+  NZBGET_USER,
+  NZBGET_PASS,
 } = process.env;
 
 const REMEDIARR_ENABLED = String(REMEDIARR_SUPPORT || '').toLowerCase() === 'true';
+const STATUS_DEBUG_ENABLED = String(STATUS_DEBUG || '').toLowerCase() === 'true';
+const STATUS_SOURCE_VALUE = String(STATUS_SOURCE || 'auto').toLowerCase();
 
 const commands = [
   new SlashCommandBuilder()
@@ -256,7 +267,7 @@ client.on('interactionCreate', async (interaction) => {
         return;
       }
 
-      const status = await fetchMediaStatus(resolvedMediaId, mediaType);
+  const status = await fetchMediaStatus(resolvedMediaId, mediaType, query);
       await interaction.editReply(status);
     } catch (err) {
       console.error('Failed to fetch status', err);
@@ -266,34 +277,186 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Fetch a concise status for given media id and type from Jellyseerr
-async function fetchMediaStatus(mediaId, mediaType) {
+function jellyseerrHeaders() {
+  return { 'X-Api-Key': JELLYSEERR_API_KEY, 'Content-Type': 'application/json' };
+}
+
+async function fetchJellyseerrMediaDetails(mediaId, mediaType) {
   const base = JELLYSEERR_API_URL.replace(/\/$/, '');
-  const headers = { 'X-Api-Key': JELLYSEERR_API_KEY, 'Content-Type': 'application/json' };
+  const url = `${base}/api/v1/media/${mediaType}/${mediaId}`;
+  const res = await axios.get(url, { headers: jellyseerrHeaders() });
+  return res.data;
+}
 
-  // Try media details endpoint if available
+async function searchJellyseerr(query) {
+  const base = JELLYSEERR_API_URL.replace(/\/$/, '');
+  const url = `${base}/api/v1/search?query=${encodeURIComponent(query)}`;
+  const res = await axios.get(url, { headers: jellyseerrHeaders() });
+  return Array.isArray(res.data?.results) ? res.data.results : [];
+}
+
+function getExternalIdsFromJellyseerr(data) {
+  const mi = data?.mediaInfo;
+  const tmdbId = data?.tmdbId ?? mi?.tmdbId ?? data?.media?.tmdbId ?? null;
+  const tvdbId = data?.tvdbId ?? mi?.tvdbId ?? data?.media?.tvdbId ?? null;
+  // Sometimes they’re nested:
+  const altTmdb = data?.mediaInfo?.externalIds?.tmdbId ?? data?.externalIds?.tmdbId;
+  const altTvdb = data?.mediaInfo?.externalIds?.tvdbId ?? data?.externalIds?.tvdbId;
+  return {
+    tmdbId: tmdbId ?? altTmdb ?? null,
+    tvdbId: tvdbId ?? altTvdb ?? null,
+  };
+}
+
+function radarrHeaders() {
+  return { 'X-Api-Key': RADARR_API_KEY, 'Content-Type': 'application/json' };
+}
+
+function sonarrHeaders() {
+  return { 'X-Api-Key': SONARR_API_KEY, 'Content-Type': 'application/json' };
+}
+
+async function fetchRadarrMovieIdByTmdbId(tmdbId) {
+  if (!RADARR_URL || !RADARR_API_KEY || !tmdbId) return null;
+  const base = RADARR_URL.replace(/\/$/, '');
+  // v3 endpoint
+  const url = `${base}/api/v3/movie?tmdbId=${encodeURIComponent(String(tmdbId))}`;
+  const res = await axios.get(url, { headers: radarrHeaders() });
+  // Radarr returns either an object or [] depending on version
+  if (Array.isArray(res.data)) return res.data[0]?.id ?? null;
+  return res.data?.id ?? null;
+}
+
+async function fetchRadarrQueueItemByMovieId(movieId) {
+  if (!RADARR_URL || !RADARR_API_KEY || !movieId) return null;
+  const base = RADARR_URL.replace(/\/$/, '');
+  const url = `${base}/api/v3/queue?page=1&pageSize=50&sortKey=timeleft&sortDirection=ascending&includeUnknownMovieItems=true`;
+  const res = await axios.get(url, { headers: radarrHeaders() });
+  const records = Array.isArray(res.data?.records) ? res.data.records : (Array.isArray(res.data) ? res.data : []);
+  return records.find((r) => r.movieId === movieId) || null;
+}
+
+async function fetchSonarrSeriesIdByTvdbId(tvdbId) {
+  if (!SONARR_URL || !SONARR_API_KEY || !tvdbId) return null;
+  const base = SONARR_URL.replace(/\/$/, '');
+  // v3 endpoint
+  const url = `${base}/api/v3/series?tvdbId=${encodeURIComponent(String(tvdbId))}`;
+  const res = await axios.get(url, { headers: sonarrHeaders() });
+  if (Array.isArray(res.data)) return res.data[0]?.id ?? null;
+  return res.data?.id ?? null;
+}
+
+async function fetchSonarrQueueItemBySeriesId(seriesId) {
+  if (!SONARR_URL || !SONARR_API_KEY || !seriesId) return null;
+  const base = SONARR_URL.replace(/\/$/, '');
+  const url = `${base}/api/v3/queue?page=1&pageSize=50&sortKey=timeleft&sortDirection=ascending&includeUnknownSeriesItems=true`;
+  const res = await axios.get(url, { headers: sonarrHeaders() });
+  const records = Array.isArray(res.data?.records) ? res.data.records : (Array.isArray(res.data) ? res.data : []);
+  return records.find((r) => r.seriesId === seriesId) || null;
+}
+
+function mapArrQueueToDownloadStatus(queueItem) {
+  if (!queueItem) return null;
+  // shared-ish fields across Radarr/Sonarr
+  const percent = Number.isFinite(queueItem?.progress) ? queueItem.progress : null;
+  const state = queueItem?.status || queueItem?.trackedDownloadStatus || queueItem?.downloadClientStatus || null;
+  const timeleft = queueItem?.timeleft ?? queueItem?.timeLeft ?? null;
+  // timeleft can be string like "00:03:10" in some versions; keep string if so
+  let etaHuman = null;
+  if (typeof timeleft === 'string' && timeleft.trim()) {
+    etaHuman = timeleft.trim();
+  } else if (typeof timeleft === 'number' && Number.isFinite(timeleft)) {
+    etaHuman = formatEta(timeleft);
+  }
+
+  return {
+    percent,
+    state,
+    etaHuman,
+  };
+}
+
+async function fetchArrDownloadStatus(mediaType, jellyseerrData) {
+  const ids = getExternalIdsFromJellyseerr(jellyseerrData);
+  if (mediaType === 'movie') {
+    const movieId = await fetchRadarrMovieIdByTmdbId(ids.tmdbId);
+    const queueItem = await fetchRadarrQueueItemByMovieId(movieId);
+    return mapArrQueueToDownloadStatus(queueItem);
+  }
+
+  if (mediaType === 'tv') {
+    const seriesId = await fetchSonarrSeriesIdByTvdbId(ids.tvdbId);
+    const queueItem = await fetchSonarrQueueItemBySeriesId(seriesId);
+    return mapArrQueueToDownloadStatus(queueItem);
+  }
+
+  return null;
+}
+
+// Fetch a concise status for given media id and type from Jellyseerr (optionally enriched via Radarr/Sonarr/NZBGet)
+async function fetchMediaStatus(mediaId, mediaType, queryForFallback) {
+  let jellyseerrData = null;
+
+  // Step 1: get Jellyseerr details if possible (we use this for title/availability + external ids)
   try {
-    // Some Jellyseerr/Overseerr variants expose /api/v1/media/:type/:id
-    const url = `${base}/api/v1/media/${mediaType}/${mediaId}`;
-    const res = await axios.get(url, { headers });
-    const data = res.data;
-
-    return formatMediaStatusCard(data, { mediaId, mediaType });
+    jellyseerrData = await fetchJellyseerrMediaDetails(mediaId, mediaType);
   } catch (err) {
-    // If not found, fallback to search results and try to surface availability
-    try {
-      const searchUrl = `${base}/api/v1/search?query=${encodeURIComponent(String(mediaId))}`;
-      const searchRes = await axios.get(searchUrl, { headers });
-      const results = Array.isArray(searchRes.data?.results) ? searchRes.data.results : [];
-      const match = results.find((r) => (r.mediaInfo?.id ?? r.id) === mediaId) || results[0];
-      if (!match) return `No detailed status available for id ${mediaId}`;
+    // ignore; we'll try search fallback
+  }
 
-      return formatMediaStatusCard(match, { mediaId, mediaType });
-    } catch (err2) {
-      // give up and return a generic message
-      return 'Could not retrieve status from Jellyseerr API.';
+  if (!jellyseerrData) {
+    try {
+      const fallbackQuery = queryForFallback || String(mediaId);
+      const results = await searchJellyseerr(fallbackQuery);
+      const match = results.find((r) => (r.mediaInfo?.id ?? r.id) === mediaId) || results[0];
+      if (match) jellyseerrData = match;
+    } catch (err) {
+      // ignore
     }
   }
+
+  if (STATUS_DEBUG_ENABLED && jellyseerrData) {
+    console.log('[status] jellyseerr snippet:', JSON.stringify({
+      title: jellyseerrData?.title,
+      name: jellyseerrData?.name,
+      status: jellyseerrData?.status,
+      available: jellyseerrData?.available,
+      mediaInfo: jellyseerrData?.mediaInfo,
+    }, null, 2));
+  }
+
+  // Step 2: optionally enrich with downloader queue (Radarr/Sonarr)
+  const shouldTryArr = STATUS_SOURCE_VALUE === 'auto'
+    || STATUS_SOURCE_VALUE === 'radarr'
+    || STATUS_SOURCE_VALUE === 'sonarr'
+    || STATUS_SOURCE_VALUE === 'arr';
+
+  let arrDownload = null;
+  if (shouldTryArr && jellyseerrData) {
+    try {
+      arrDownload = await fetchArrDownloadStatus(mediaType, jellyseerrData);
+    } catch (err) {
+      if (STATUS_DEBUG_ENABLED) console.log('[status] arr lookup failed:', err?.message || err);
+    }
+  }
+
+  // Step 3: format
+  const baseCard = formatMediaStatusCard(jellyseerrData || {}, { mediaId, mediaType });
+
+  // If arr provided progress, merge it by formatting a synthetic payload with download fields
+  if (arrDownload && (arrDownload.percent !== null || arrDownload.state || arrDownload.etaHuman)) {
+    const merged = {
+      ...(jellyseerrData || {}),
+      download: {
+        progress: arrDownload.percent,
+        state: arrDownload.state,
+        eta: arrDownload.etaHuman,
+      },
+    };
+    return formatMediaStatusCard(merged, { mediaId, mediaType });
+  }
+
+  return baseCard;
 }
 
 function clamp(n, min, max) {
@@ -337,7 +500,7 @@ function extractDownloadStatus(data) {
 
   // Direct percent fields we’ve seen in various integrations
   const percentFields = ['progress', 'progressPercent', 'percent', 'percentage', 'downloadPercent', 'completion'];
-  const stateFields = ['state', 'status', 'downloadState', 'downloadStatus'];
+  const stateFields = ['state', 'status', 'downloadState', 'downloadStatus', 'mediaStatus'];
   const etaFields = ['timeLeft', 'eta', 'etaSeconds', 'secondsLeft', 'timeRemaining', 'timeleft'];
   const titleFields = ['title', 'name', 'originalTitle'];
 
@@ -430,14 +593,29 @@ function normalizeAvailable(data) {
   return null;
 }
 
+function normalizeStatusString(v) {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (s.toLowerCase() === 'unknown') return null;
+  return s;
+}
+
 function formatMediaStatusCard(data, { mediaId, mediaType }) {
   const title = getDisplayTitle(data);
   const available = normalizeAvailable(data);
   const download = extractDownloadStatus(data);
 
   // Prefer a friendly overall status if present
-  const rawStatus = data?.status ?? data?.mediaInfo?.status ?? null;
-  const stateLabel = download.state || rawStatus || (available === true ? 'Available' : available === false ? 'Not available' : 'Unknown');
+  const rawStatus = normalizeStatusString(data?.status)
+    ?? normalizeStatusString(data?.mediaInfo?.status)
+    ?? normalizeStatusString(data?.mediaInfo?.mediaStatus)
+    ?? normalizeStatusString(data?.mediaStatus)
+    ?? null;
+
+  const stateLabel = normalizeStatusString(download.state)
+    || rawStatus
+    || (available === true ? 'Available' : available === false ? 'Not available' : 'Status unavailable');
 
   const lines = [];
   lines.push(title);
@@ -459,7 +637,7 @@ function formatMediaStatusCard(data, { mediaId, mediaType }) {
 
   // Extra metadata lines when present
   const meta = [];
-  if (available !== null) meta.push(`Available: ${available ? 'Yes' : 'No'}`);
+  meta.push(`Available: ${available === null ? 'unknown' : (available ? 'Yes' : 'No')}`);
   if (download.resolution) meta.push(`Quality: ${download.resolution}`);
   meta.push(`ID: ${mediaType}/${mediaId}`);
   lines.push(meta.join(' • '));

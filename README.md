@@ -18,6 +18,23 @@ Set the following environment variables (via Docker or your shell):
 - `JELLYSEERR_API_KEY` – API key from Jellyseerr
 - `REMEDIARR_SUPPORT` – optional; set to `true` to require descriptions to include keyword tags (see Keyword Tags below). Default: `false`.
 
+Optional `/status` integrations (for more accurate download progress):
+- `STATUS_SOURCE` – where `/status` pulls progress from. Values: `auto` (default), `jellyseerr`, `radarr`, `sonarr`.
+- `STATUS_DEBUG` – set to `true` to log a small Jellyseerr/Radarr/Sonarr payload snippet to stdout for troubleshooting.
+
+Radarr (movie queue progress):
+- `RADARR_URL` – e.g. `http://radarr:7878`
+- `RADARR_API_KEY`
+
+Sonarr (TV queue progress):
+- `SONARR_URL` – e.g. `http://sonarr:8989`
+- `SONARR_API_KEY`
+
+NZBGet (not yet used, reserved for future):
+- `NZBGET_URL`
+- `NZBGET_USER`
+- `NZBGET_PASS`
+
 ## Local run
 ```sh
 npm install
@@ -109,6 +126,10 @@ Behavior:
 - The bot replies ephemerally (visible only to the requester).
 - It will try to fetch detailed media info from Jellyseerr and present a status “card” (in a code block) including a progress bar and ETA when available.
 - Jellyseerr API implementations vary by version; if a detailed endpoint isn’t available, the bot falls back to search-based info.
+
+More accurate progress (recommended):
+- If Radarr/Sonarr are configured, `/status` will also query their download queues to display real-time progress/ETA/state (this is typically what you see in download UIs).
+- This helps when Jellyseerr doesn’t expose downloader progress directly.
 
 Output notes:
 - When Jellyseerr returns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
