@@ -519,6 +519,16 @@ function mapArrQueueToDownloadStatus(queueItem) {
 }
 
 async function fetchArrDownloadStatus(mediaType, jellyseerrData) {
+  // Trigger queue refresh before fetching
+  if (mediaType === 'movie') {
+    await refreshRadarrQueue();
+  } else if (mediaType === 'tv') {
+    await refreshSonarrQueue();
+  }
+
+  // Give the service a moment to update
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   const ids = getExternalIdsFromJellyseerr(jellyseerrData);
   if (mediaType === 'movie') {
     const movieId = await fetchRadarrMovieIdByTmdbId(ids.tmdbId);
@@ -1003,7 +1013,40 @@ async function createJellyseerrIssue(issue, user) {
   return response.data;
 }
 
+async function refreshRadarrQueue() {
+  if (!RADARR_URL || !RADARR_API_KEY) return;
+  try {
+    const base = RADARR_URL.replace(/\/$/, '');
+    const url = `${base}/api/v3/command`;
+    await axios.post(url, { name: 'RefreshMonitoredDownloads' }, { headers: radarrHeaders() });
+    if (STATUS_DEBUG_ENABLED) console.log('[radarr] queue refresh triggered');
+  } catch (err) {
+    if (STATUS_DEBUG_ENABLED) console.log('[radarr] queue refresh failed:', err?.message);
+  }
+}
+
+async function refreshSonarrQueue() {
+  if (!SONARR_URL || !SONARR_API_KEY) return;
+  try {
+    const base = SONARR_URL.replace(/\/$/, '');
+    const url = `${base}/api/v3/command`;
+    await axios.post(url, { name: 'RefreshMonitoredDownloads' }, { headers: sonarrHeaders() });
+    if (STATUS_DEBUG_ENABLED) console.log('[sonarr] queue refresh triggered');
+  } catch (err) {
+    if (STATUS_DEBUG_ENABLED) console.log('[sonarr] queue refresh failed:', err?.message);
+  }
+}
+
 async function fetchAllQueueItems(limit = 10) {
+  // Trigger queue refresh in both services before fetching
+  await Promise.all([
+    refreshRadarrQueue(),
+    refreshSonarrQueue(),
+  ]);
+
+  // Give the services a moment to update their queue data
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   const allItems = [];
 
   // Fetch from Radarr if configured

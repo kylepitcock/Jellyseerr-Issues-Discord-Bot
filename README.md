@@ -4,7 +4,10 @@ Discord slash command `/issue` that sends issues to your Jellyseerr instance via
 
 ## Prerequisites
 - DiscordOutput notes:
-- When Jellyseerr returns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
+- When Jellyseerr More accurate progress (recommended):
+- If Radarr/Sonarr are configured, `/status` will automatically trigger a queue refresh and query their download queues to display real-time progress/ETA/state (this is typically what you see in download UIs).
+- This helps when Jellyseerr doesn't expose downloader progress directly.
+rns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
 - Download size information (downloaded / total) is shown when available from Radarr/Sonarr.
 - If those fields aren't available for the item, the bot will fall back to showing the best available status/availability info.
 
@@ -23,6 +26,7 @@ Options:
 
 Behavior:
 - The bot replies publicly (visible to everyone in the channel).
+- Automatically triggers a queue refresh in Radarr/Sonarr before fetching, ensuring the latest download status.
 - It queries both Radarr and Sonarr (if configured) and combines the results, sorted by download progress.
 - Each item shows a progress bar, percentage complete, current state (e.g., "Downloading"), estimated time remaining, and download size (downloaded / total).
 - Requires at least one of `RADARR_URL`/`RADARR_API_KEY` or `SONARR_URL`/`SONARR_API_KEY` to be configured.
