@@ -104,7 +104,6 @@ Contributions welcome. Please open small, focused PRs.
 
 MIT
   ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
-```
 
 ## Docker Compose (no .env file)
 1) Create `docker-compose.yml` with environment values inline:
