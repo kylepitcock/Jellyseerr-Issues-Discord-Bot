@@ -1,117 +1,108 @@
 # Jellyseerr Issue Discord Bot
 
-Discord slash command `/issue` that sends issues to your Jellyseerr instance via API.
+A small Discord bot that creates issues in Jellyseerr and reports download status from Radarr/Sonarr.
 
-## Prerequisites
-- DiscordOutput notes:
-- When Jellyseerr More accurate progress (recommended):
-- If Radarr/Sonarr are configured, `/status` will automatically trigger a queue refresh and query their download queues to display real-time progress/ETA/state (this is typically what you see in download UIs).
-- This helps when Jellyseerr doesn't expose downloader progress directly.
-rns progress fields (percent/progress) and time remaining (ETA/seconds left), the bot will render a text progress bar (monospace) similar to a download status UI.
-- Download size information (downloaded / total) is shown when available from Radarr/Sonarr.
-- If those fields aren't available for the item, the bot will fall back to showing the best available status/availability info.
+This README is concise and focused on setup, configuration, and the available slash commands (`/issue`, `/status`, and `/queue`).
 
-Examples:
-```text
-/status                                      # Show currently downloading item
-/status title:"The Matrix" mediatype:movie   # Look up specific movie
-/status title:"The Office" mediatype:tv      # Look up specific TV show
-```
+## Quick start
 
-## Slash Command: `/queue`
-Displays the current download queue, showing the top items being downloaded from Radarr and/or Sonarr.
+1. Create a copy of `.env.example` and populate required values (or set env vars directly).
+2. Run locally:
 
-Options:
-- `limit` (optional) – number of items to show (1-25, default: 10)
-
-Behavior:
-- The bot replies publicly (visible to everyone in the channel).
-- Automatically triggers a queue refresh in Radarr/Sonarr before fetching, ensuring the latest download status.
-- It queries both Radarr and Sonarr (if configured) and combines the results, sorted by download progress.
-- Each item shows a progress bar, percentage complete, current state (e.g., "Downloading"), estimated time remaining, and download size (downloaded / total).
-- Requires at least one of `RADARR_URL`/`RADARR_API_KEY` or `SONARR_URL`/`SONARR_API_KEY` to be configured.
-
-Example output:
-```
-Download Queue (5 items)
-
-1. The Matrix Resurrections
-   ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░  67%
-   Downloading • ETA: 5m 32s • 3.50 GB / 5.20 GB
-
-2. The Office S09E23
-   ▓▓▓▓▓▓▓░░░░░░░░░░░  42%
-   Downloading • ETA: 12m 8s • 840.00 MB / 2.00 GB
-```
-
-Examples:
-```text
-/queue
-/queue limit:5
-/queue limit:25
-```
-
-### Keyword Tags (used when `REMEDIARR_SUPPORT=true`)n and bot token with slash commands enabled
-- Jellyseerr base URL reachable from the bot container
-- Jellyseerr API key
-- Node 18+ (or Docker)
-
-## Configuration
-Set the following environment variables (via Docker or your shell):
-
-- `DISCORD_TOKEN` – bot token
-- `DISCORD_APP_ID` – Discord application (client) ID
-- `DISCORD_GUILD_ID` – optional; set to a test guild to register commands instantly. Leave unset for global registration (can take up to an hour to propagate)
-- `JELLYSEERR_API_URL` – base URL, e.g. `https://jellyseerr.example.com`
-- `JELLYSEERR_API_KEY` – API key from Jellyseerr
-- `REMEDIARR_SUPPORT` – optional; set to `true` to require descriptions to include keyword tags (see Keyword Tags below). Default: `false`.
-
-Optional `/status` integrations (for more accurate download progress):
-- `STATUS_SOURCE` – where `/status` pulls progress from. Values: `auto` (default), `jellyseerr`, `radarr`, `sonarr`.
-- `STATUS_DEBUG` – set to `true` to log a small Jellyseerr/Radarr/Sonarr payload snippet to stdout for troubleshooting.
-
-Radarr (movie queue progress):
-- `RADARR_URL` – e.g. `http://radarr:7878`
-- `RADARR_API_KEY`
-
-Sonarr (TV queue progress):
-- `SONARR_URL` – e.g. `http://sonarr:8989`
-- `SONARR_API_KEY`
-
-## Local run
-```sh
+```powershell
 npm install
 npm start
 ```
 
-## Docker
-Build and run:
-```sh
+3. Or build and run with Docker:
+
+```powershell
 docker build -t jellyseerr-issue-bot .
-docker run \
-  -e DISCORD_TOKEN=... \
-  -e DISCORD_APP_ID=... \
-  -e DISCORD_GUILD_ID=... \
-  -e JELLYSEERR_API_URL=... \
-  -e JELLYSEERR_API_KEY=... \
-  jellyseerr-issue-bot
+docker run -e DISCORD_TOKEN=... -e DISCORD_APP_ID=... -e JELLYSEERR_API_URL=... -e JELLYSEERR_API_KEY=... jellyseerr-issue-bot
 ```
 
-## Prebuilt Images
-Once CI publishes, you can pull the image without cloning:
+## Prerequisites
 
-- GHCR: `ghcr.io/kylepitcock/jellyseerr-issue-bot:latest`
-- Docker Hub (optional if configured): `docker.io/<your-dockerhub-user>/jellyseerr-issue-bot:latest`
+- A Discord application with a bot token and slash commands enabled
+- A Jellyseerr instance reachable from the bot
+- Jellyseerr API key
+- Optional: Radarr and/or Sonarr for live download progress
 
-Run directly:
-```sh
-docker run \
-  -e DISCORD_TOKEN=... \
-  -e DISCORD_APP_ID=... \
-  -e DISCORD_GUILD_ID=... \
-  -e JELLYSEERR_API_URL=... \
-  -e JELLYSEERR_API_KEY=... \
-  -e REMEDIARR_SUPPORT=false \
+## Configuration
+
+Set these environment variables (Docker, `.env`, or your shell):
+
+Required:
+- `DISCORD_TOKEN` – Discord bot token
+- `DISCORD_APP_ID` – Discord application (client) ID
+- `JELLYSEERR_API_URL` – Jellyseerr base URL (e.g. `https://jellyseerr.example.com`)
+- `JELLYSEERR_API_KEY` – Jellyseerr API key
+
+Optional:
+- `DISCORD_GUILD_ID` – register commands to a test guild for immediate availability
+- `REMEDIARR_SUPPORT` – set to `true` to enforce keyword tags in `/issue` descriptions
+- `STATUS_SOURCE` – where `/status` pulls progress from: `auto` (default), `jellyseerr`, `radarr`, or `sonarr`
+- `STATUS_DEBUG` – set to `true` to enable debug logging for status lookups
+
+Radarr (optional):
+- `RADARR_URL` – e.g. `http://radarr:7878`
+- `RADARR_API_KEY`
+
+Sonarr (optional):
+- `SONARR_URL` – e.g. `http://sonarr:8989`
+- `SONARR_API_KEY`
+
+See `.env.example` for a template of optional values.
+
+## Slash commands
+
+### /issue
+Create an issue in Jellyseerr for a movie or TV episode.
+
+Options:
+- `title` (required)
+- `mediatype` (required) – `movie` or `tv`
+- `reason` (required) – `video`, `audio`, `subtitle`, or `other`
+- `issuetitle` (required)
+- `issuedescription` (required)
+- `season` / `episode` (tv only)
+- `mediaid` (optional) – Jellyseerr media ID to skip searching
+
+Behavior:
+- Creates an issue via the Jellyseerr API. The bot responds ephemerally by default.
+
+### /status
+Show download / availability status for a movie or TV show.
+
+Usage:
+- `/status` — quick check: shows the first item currently downloading (Radarr/Sonarr) if available
+- `/status title:"The Matrix" mediatype:movie` — look up a specific item
+
+Notes:
+- If Radarr/Sonarr are configured, the bot triggers a queue refresh before fetching so you get recent progress/ETA.
+- The output is a monospace "status card" containing a progress bar, percent, state, ETA, and size when available.
+
+### /queue
+Show the current download queue (combined Radarr & Sonarr).
+
+Options:
+- `limit` (optional) – number of items to show (1–25, default: 10)
+
+Behavior:
+- Triggers queue refreshes in Radarr/Sonarr, fetches and combines queue items, and displays a numbered list with progress bars, percent complete, state, ETA, and downloaded/total size when available.
+
+## Notes
+
+- For quicker development, set `DISCORD_GUILD_ID` to register commands instantly for a single guild.
+- Logs are printed to stdout. Use your container/orchestration logging to persist logs.
+
+## Contributing
+
+Contributions welcome. Please open small, focused PRs.
+
+## License
+
+MIT
   ghcr.io/kylepitcock/jellyseerr-issue-bot:latest
 ```
 
